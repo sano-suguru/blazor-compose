@@ -17,6 +17,21 @@ public sealed class GeneratorTests
         }
         """;
 
+    private const string VStackCounterSource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        public partial class Counter : ComposeComponentBase
+        {
+            private int _count = 0;
+
+            protected override View Body =>
+                VStack(
+                    Text($"Count: {_count}"),
+                    Button("Increment", () => _count++));
+        }
+        """;
+
     private const string NestedPartialCounterSource = """
         using BlazorCompose;
         using static BlazorCompose.UI;
@@ -39,6 +54,28 @@ public sealed class GeneratorTests
         Assert.Contains(
             "protected override void RenderBody(global::Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder)",
             source);
+    }
+
+    [Fact]
+    public void VStackWithTextAndButtonGeneratesLinearSscRenderBody()
+    {
+        var result = CompilationTestHost.RunGenerator(VStackCounterSource);
+
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // Sequence-literal builder calls in preorder
+        Assert.Contains("__builder.OpenElement(0, \"div\")", generated);
+        Assert.Contains("__builder.OpenElement(1, \"span\")", generated);
+        Assert.Contains("__builder.AddContent(2, $\"Count: {_count}\")", generated);
+        Assert.Contains("__builder.OpenElement(3, \"button\")", generated);
+        Assert.Contains(
+            "__builder.AddAttribute(4, \"onclick\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => _count++))",
+            generated);
+        Assert.Contains("__builder.AddContent(5, \"Increment\")", generated);
+
+        // No runtime Body access, no runtime sequence variable
+        Assert.DoesNotContain(".Body", generated);
+        Assert.DoesNotContain("get_Body", generated);
     }
 
     [Fact]

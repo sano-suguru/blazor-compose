@@ -1,4 +1,7 @@
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
+using BlazorCompose.Compiler.Analysis;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -40,12 +43,103 @@ internal static class ComponentModelFactory
         // Include namespace in the hint name to prevent collisions when two components share
         // the same simple class name across different namespaces.
         var hintName = namespaceName is not null
-            ? $"{namespaceName}.{symbol.Name}.g.cs"
-            : $"{symbol.Name}.g.cs";
+            ? $"{namespaceName}.{symbol.MetadataName}.g.cs"
+            : $"{symbol.MetadataName}.g.cs";
+
+        var knownSymbols = KnownSymbols.TryCreate(syntaxContext.SemanticModel.Compilation);
+        var rootNode = knownSymbols is not null
+            ? TryExtractBodyNode(classDeclaration, syntaxContext.SemanticModel, knownSymbols, cancellationToken)
+            : null;
 
         return new ComponentModel(
             HintName: hintName,
             ClassName: symbol.Name,
-            Namespace: namespaceName);
+            Namespace: namespaceName,
+            RootNode: rootNode);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Body extraction
+    // ---------------------------------------------------------------------------
+
+    private static RenderNode? TryExtractBodyNode(
+        ClassDeclarationSyntax classDecl,
+        SemanticModel semanticModel,
+        KnownSymbols symbols,
+        CancellationToken ct)
+    {
+        foreach (var member in classDecl.Members)
+        {
+            if (member is not PropertyDeclarationSyntax prop)
+                continue;
+
+            if (prop.Identifier.Text != "Body")
+                continue;
+
+            if (!prop.Modifiers.Any(SyntaxKind.OverrideKeyword))
+                continue;
+
+            // Support expression-bodied properties only: `protected override View Body => expr;`
+            if (prop.ExpressionBody is { Expression: var bodyExpr })
+                return TryAnalyzeExpression(bodyExpr, semanticModel, symbols, ct);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Recursively classifies <paramref name="expr"/> as SSC and returns the corresponding
+    /// <see cref="RenderNode"/>, or <see langword="null"/> when the expression is opaque or
+    /// unrecognized.  Dynamic argument text is captured verbatim from the syntax so that
+    /// interpolations and lambdas are preserved exactly.
+    /// </summary>
+    private static RenderNode? TryAnalyzeExpression(
+        ExpressionSyntax expr,
+        SemanticModel semanticModel,
+        KnownSymbols symbols,
+        CancellationToken ct)
+    {
+        if (expr is not InvocationExpressionSyntax invocation)
+            return null;
+
+        var symbolInfo = semanticModel.GetSymbolInfo(invocation, ct);
+        if (symbolInfo.Symbol is not IMethodSymbol method)
+            return null;
+
+        if (SymbolEqualityComparer.Default.Equals(method, symbols.TextMethod))
+        {
+            // Text(string content)
+            var contentArg = invocation.ArgumentList.Arguments[0].Expression;
+            return new TextNode(ContentExpression: contentArg.ToString());
+        }
+
+        if (SymbolEqualityComparer.Default.Equals(method, symbols.ButtonMethod))
+        {
+            // Button(string label, Action onClick)
+            var labelArg = invocation.ArgumentList.Arguments[0].Expression;
+            var handlerArg = invocation.ArgumentList.Arguments[1].Expression;
+            return new ButtonNode(
+                LabelExpression: labelArg.ToString(),
+                HandlerExpression: handlerArg.ToString());
+        }
+
+        if (SymbolEqualityComparer.Default.Equals(method, symbols.VStackMethod))
+        {
+            // VStack(params View[] children) — expanded call form: each argument is a child
+            var children = new List<RenderNode>(invocation.ArgumentList.Arguments.Count);
+            foreach (var arg in invocation.ArgumentList.Arguments)
+            {
+                var childNode = TryAnalyzeExpression(arg.Expression, semanticModel, symbols, ct);
+                if (childNode is null)
+                    return null; // opaque child; fall back to null for the whole VStack
+                children.Add(childNode);
+            }
+            return new VStackNode(children.ToImmutableArray());
+        }
+
+        // IfNode recognition without allocation/emission (Task 5 owns those).
+        // Return null so the generator emits an empty RenderBody rather than incorrect code.
+
+        return null;
     }
 }
