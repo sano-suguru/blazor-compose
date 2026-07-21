@@ -122,3 +122,84 @@ Reviewer assessment:
 ## Concerns
 
 - None blocking. The only notable wrinkle was the obsolete bUnit `TestContext` base class during the initial red phase; the final test suite uses `BunitContext` and is warning-clean.
+
+## Browser End-to-End Addendum (2026-07-21)
+
+Added the missing real-browser evidence in headless Google Chrome. This was validation-only work; no product code changes were required.
+
+### Real browser interaction evidence
+
+Started the sample on the deterministic launch-profile port and kept the exact process for later shutdown:
+
+```bash
+dotnet run --project samples/BlazorCompose.Samples.Counter/BlazorCompose.Samples.Counter.csproj --launch-profile http
+```
+
+Observed:
+
+- Listening on `http://localhost:5019`
+- Exact listening server PID later terminated: `22709`
+
+Started isolated headless Chrome with remote debugging:
+
+```bash
+/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --headless=new --remote-debugging-port=9222 --user-data-dir=/Users/sanosuguru/dev/dotnet-compose/.worktrees/production-foundation/.superpowers/sdd/task-6-chrome-profile about:blank
+```
+
+Observed:
+
+- DevTools listening on `ws://127.0.0.1:9222/devtools/browser/...`
+- Exact listening browser PID later terminated: `22887`
+
+Ran dependency-free Node/CDP automation against the real browser DOM:
+
+```bash
+node .superpowers/sdd/task-6-browser-e2e.js
+```
+
+Result:
+
+```json
+{
+  "navigatedTo": "http://localhost:5019/counter",
+  "interactiveServerSocket": "ws://localhost:5019/_blazor?id=WiQUX_OhDH8fNAHTVSv5xw",
+  "initialText": "Count: 0",
+  "interactiveRenderCompleted": true,
+  "clickedButton": "Increment",
+  "clickDispatchedToServer": true,
+  "finalText": "Count: 1"
+}
+```
+
+Notes:
+
+- This evidence comes from Chrome headless via the Chrome DevTools Protocol, not `curl`.
+- The script waited for the Interactive Server `_blazor` websocket and the first render-complete message before clicking.
+- The click was executed in the live browser DOM and the rendered text changed from `Count: 0` to `Count: 1`.
+
+### Shutdown and cleanup
+
+Stopped the exact processes used for validation:
+
+```bash
+kill 22709
+kill 22887
+```
+
+Confirmed both listeners were gone:
+
+```bash
+lsof -nP -iTCP:5019 -sTCP:LISTEN || true
+lsof -nP -iTCP:9222 -sTCP:LISTEN || true
+```
+
+Removed validation-only browser artifacts:
+
+- `.superpowers/sdd/task-6-chrome-profile`
+- `.superpowers/sdd/task-6-browser-e2e.js`
+- `.superpowers/sdd/task-6-browser-e2e-result.json`
+- `.superpowers/sdd/task-6-diagnose.js`
+- `.superpowers/sdd/task-6-diagnose-localhost.js`
+- `.superpowers/sdd/task-6-diagnose-output.json`
+- `.superpowers/sdd/task-6-diagnose-localhost-output.json`
+- `.superpowers/sdd/task-6-e2e.js`
