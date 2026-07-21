@@ -104,6 +104,14 @@ internal static class ExpressionTemplateFactory
             // requirement is recorded even though no text is rewritten.
             if (IsMemberAccessName(name))
             {
+                // A type written under a relative namespace path (for example 'Models.Widget' inside
+                // 'namespace Root.Features' where it binds to 'Root.Models.Widget') must have the whole
+                // path fully qualified, because the generated file has no using/namespace context to
+                // resolve the left-hand namespace.  When the name is not such a reference this is a no-op
+                // and the accessibility requirement is recorded as before.
+                if (TryQualifyNamespaceQualifiedType(name, context, replacements, replacedSpans))
+                    continue;
+
                 RecordMemberAccessRequirement(name, context);
                 continue;
             }
@@ -264,6 +272,65 @@ internal static class ExpressionTemplateFactory
         var symbol = context.SemanticModel.GetSymbolInfo(name, context.CancellationToken).Symbol;
         if (symbol is IFieldSymbol or IPropertySymbol or IMethodSymbol or IEventSymbol)
             RecordAccessRequirement(symbol, context);
+    }
+
+    /// <summary>
+    /// Fully qualifies a type reference written as the right-hand identifier of a namespace-qualified path
+    /// (<c>Models.Widget</c> where <c>Models</c> binds to a namespace), replacing the whole path so the
+    /// using-less generated file can resolve it (<c>global::Root.Models.Widget</c>).  A generic name keeps
+    /// its written type-argument list (only the identifier token is rewritten) so each argument is
+    /// qualified independently.  Returns <see langword="false"/> when <paramref name="name"/> is not the
+    /// right side of a namespace-qualified type reference — for example a member accessed through a value
+    /// receiver, or a nested type named through an enclosing type (whose left identifier is qualified on
+    /// its own) — leaving the caller to record the ordinary member-access requirement.
+    /// </summary>
+    private static bool TryQualifyNamespaceQualifiedType(
+        SimpleNameSyntax name,
+        ComposableBodyContext context,
+        List<Replacement> replacements,
+        List<TextSpan> replacedSpans)
+    {
+        if (context.SemanticModel.GetSymbolInfo(name, context.CancellationToken).Symbol
+            is not INamedTypeSymbol typeSymbol)
+        {
+            return false;
+        }
+
+        SyntaxNode qualifiedNode;
+        ExpressionSyntax leftSide;
+        switch (name.Parent)
+        {
+            case QualifiedNameSyntax qualified when qualified.Right == name:
+                qualifiedNode = qualified;
+                leftSide = qualified.Left;
+                break;
+            case MemberAccessExpressionSyntax memberAccess when memberAccess.Name == name:
+                qualifiedNode = memberAccess;
+                leftSide = memberAccess.Expression;
+                break;
+            default:
+                return false;
+        }
+
+        // Only a namespace-qualified left needs whole-path rewriting.  A type-qualified left (an enclosing
+        // type naming a nested type) is already handled by qualifying that left identifier on its own, and
+        // a value receiver is a genuine member access that keeps its unqualified text.
+        if (context.SemanticModel.GetSymbolInfo(leftSide, context.CancellationToken).Symbol
+            is not INamespaceSymbol)
+        {
+            return false;
+        }
+
+        RecordAccessRequirement(typeSymbol, context);
+
+        // Replace from the start of the whole path through the type identifier token; a generic name's
+        // trailing type-argument list stays in place so its arguments are qualified independently.
+        var span = TextSpan.FromBounds(qualifiedNode.SpanStart, IdentifierSpan(name).End);
+        var qualifiedText = name is GenericNameSyntax
+            ? typeSymbol.ToDisplayString(QualifiedNameWithoutTypeArguments)
+            : typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        AddReplacement(replacements, replacedSpans, span, new LiteralExpressionSegment(qualifiedText));
+        return true;
     }
 
     /// <summary>

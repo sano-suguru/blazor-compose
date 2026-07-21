@@ -18,6 +18,10 @@ public sealed class ComposableDefinitionTests
     [InlineData("[Composable] private static string Helper() => \"x\";", "must return BlazorCompose.View")]
     [InlineData("[Composable] private static View Helper(params string[] values) => Text(values[0]);", "params parameters are unsupported")]
     [InlineData("[Composable] private static View Helper(View content) => content;", "View parameters are unsupported")]
+    [InlineData("[Composable] private static View Helper(ref int value) => Text(\"x\");", "by-reference parameters are unsupported")]
+    [InlineData("[Composable] private static View Helper(out int value) => Text(\"x\");", "by-reference parameters are unsupported")]
+    [InlineData("[Composable] private static View Helper(in int value) => Text(\"x\");", "by-reference parameters are unsupported")]
+    [InlineData("[Composable] private static View Helper(ref readonly int value) => Text(\"x\");", "by-reference parameters are unsupported")]
     public void UnsupportedDeclarationReportsBC1002(string declaration, string message)
     {
         var source = $$"""

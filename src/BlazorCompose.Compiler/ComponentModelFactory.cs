@@ -66,6 +66,13 @@ internal static class ComponentModelFactory
 
         var template = RenderExpressionAnalyzer.Analyze(bodyExpression, bodyContext);
 
+        // Body normalization can record BC1002 for a reference that cannot exist in the using-less
+        // generated RenderBody (for example a null-conditional extension receiver that cannot be
+        // rewritten to a static call).  Surface those diagnostics and suppress emission instead of
+        // discarding them and emitting a broken RenderBody.
+        if (bodyContext.Diagnostics.Count > 0)
+            return new ComponentModelResult(null, bodyContext.Diagnostics.ToImmutable());
+
         // An unrecognized or unsupported Body shape must not produce an empty RenderBody; returning a
         // model-less result here causes CS0534 in the user's compilation, which is the correct failure
         // signal until the Opaque/BC2001 path is implemented.

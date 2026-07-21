@@ -1456,4 +1456,145 @@ public sealed class GeneratorTests
         Assert.Contains("cannot be named", message);
         Assert.Empty(result.GeneratedSources);
     }
+
+    // -----------------------------------------------------------------------
+    // By-reference [Composable] parameters (ref / out / in / ref readonly)
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("ref int value")]
+    [InlineData("out int value")]
+    [InlineData("in int value")]
+    [InlineData("ref readonly int value")]
+    public void ByReferenceComposableParameterReportsBC1002AndGeneratesNoInvalidOutput(string parameter)
+    {
+        var source = $$"""
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Helper({{parameter}}) => Text("x");
+
+                protected override View Body => Text("Body");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // A by-reference parameter rejects the declaration with exactly one BC1002 and one reason.
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.Contains(
+            "by-reference parameters are unsupported",
+            diagnostic.GetMessage(CultureInfo.InvariantCulture));
+
+        // The rejected composable is never expanded, so the component's own valid Body still emits
+        // while nothing references the invalid Helper: no broken generated output is produced.
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+        Assert.DoesNotContain("Helper", generated);
+        Assert.Contains("\"Body\"", generated);
+    }
+
+    // -----------------------------------------------------------------------
+    // Namespace-relative type / static references qualify across namespaces
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CrossNamespaceRelativeTypeReferenceQualifiesAndCompiles()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("Widgets.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                namespace Root.Models
+                {
+                    public sealed class Widget
+                    {
+                        public static string Label => "widget";
+                    }
+
+                    public sealed class Box<T>
+                    {
+                        public static string Describe => typeof(T).Name;
+                    }
+                }
+
+                namespace Root.Features
+                {
+                    public static class Widgets
+                    {
+                        // 'Models.Widget' / 'Models.Box<int>' resolve lexically to 'Root.Models.*'
+                        // through the shared 'Root' parent, but the using-less generated RenderBody
+                        // cannot resolve the relative 'Models' path, so it must be fully qualified on
+                        // expansion while any written type arguments are preserved.
+                        [Composable]
+                        public static View Show() =>
+                            Text(Models.Widget.Label + typeof(Models.Widget).Name + Models.Box<int>.Describe);
+                    }
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+                using Root.Features;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => Widgets.Show();
+                }
+                """));
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // The static-member access, the typeof type reference, and the generic type reference — all
+        // written under the relative 'Models' path — are fully qualified to 'global::Root.Models.*',
+        // and the generic type argument survives, so expansion into the global namespace compiles.
+        Assert.Contains("global::Root.Models.Widget.Label", generated);
+        Assert.Contains("typeof(global::Root.Models.Widget)", generated);
+        Assert.Contains("global::Root.Models.Box<int>.Describe", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    // -----------------------------------------------------------------------
+    // Component Body normalization diagnostics surface as BC1002
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ComponentBodyWithUnnormalizableExtensionReceiverReportsBC1002AndGeneratesNoSource()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            using System.Collections.Generic;
+            using System.Linq;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                private IEnumerable<string> _items = new List<string> { "a" };
+
+                // A null-conditional extension receiver cannot be rewritten to a static call without
+                // changing short-circuit semantics, so Body normalization reports BC1002.
+                protected override View Body => Text(_items?.First());
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // The Body path surfaces exactly one BC1002 (previously the diagnostic was discarded).
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.Contains("cannot be normalized", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+
+        // Emission is suppressed rather than producing a broken RenderBody.
+        Assert.Empty(result.GeneratedSources);
+
+        // The only remaining consequence is the expected abstract-member gap (CS0534); there is no
+        // secondary generator error from broken generated source.
+        var error = Assert.Single(
+            result.OutputCompilation.GetDiagnostics()
+                .Where(static d => d.Severity == DiagnosticSeverity.Error));
+        Assert.Equal("CS0534", error.Id);
+    }
 }

@@ -73,6 +73,12 @@ internal static class ComposableDefinitionFactory
             if (parameter.IsParams)
                 return "params parameters are unsupported";
 
+            // A by-reference parameter (ref, out, in, or ref readonly) cannot be reproduced by the
+            // static-expansion contract, which lowers each argument to a plain typed local passed by
+            // value.  Reject every RefKind other than None with a single reason.
+            if (parameter.RefKind != RefKind.None)
+                return "by-reference parameters are unsupported";
+
             if (SymbolEqualityComparer.Default.Equals(parameter.Type, viewType))
                 return "View parameters are unsupported";
         }
