@@ -13,10 +13,13 @@ internal static class ComponentModelFactory
 {
     /// <summary>
     /// Returns a <see cref="ComponentModel"/> when <paramref name="syntaxContext"/> represents a partial
-    /// class that directly or indirectly inherits from <c>BlazorCompose.ComposeComponentBase</c>,
-    /// or <see langword="null"/> otherwise.
+    /// class that directly or indirectly inherits from <c>BlazorCompose.ComposeComponentBase</c> and
+    /// whose <c>Body</c> expression is fully SSC-analyzable, or <see langword="null"/> otherwise.
     /// </summary>
-    internal static ComponentModel? TryCreate(GeneratorSyntaxContext syntaxContext, CancellationToken cancellationToken)
+    internal static ComponentModel? TryCreate(
+        GeneratorSyntaxContext syntaxContext,
+        KnownSymbols? knownSymbols,
+        CancellationToken cancellationToken)
     {
         var classDeclaration = (ClassDeclarationSyntax)syntaxContext.Node;
 
@@ -36,6 +39,10 @@ internal static class ComponentModelFactory
         if (!ComposeComponentBaseFacts.InheritsFromComposeComponentBase(symbol))
             return null;
 
+        // Without known symbols the Body cannot be analyzed; skip rather than emit empty source.
+        if (knownSymbols is null)
+            return null;
+
         var namespaceName = symbol.ContainingNamespace is { IsGlobalNamespace: false } ns
             ? ns.ToDisplayString()
             : null;
@@ -46,10 +53,13 @@ internal static class ComponentModelFactory
             ? $"{namespaceName}.{symbol.MetadataName}.g.cs"
             : $"{symbol.MetadataName}.g.cs";
 
-        var knownSymbols = KnownSymbols.TryCreate(syntaxContext.SemanticModel.Compilation);
-        var rootNode = knownSymbols is not null
-            ? TryExtractBodyNode(classDeclaration, syntaxContext.SemanticModel, knownSymbols, cancellationToken)
-            : null;
+        var rootNode = TryExtractBodyNode(classDeclaration, syntaxContext.SemanticModel, knownSymbols, cancellationToken);
+
+        // An unrecognized or unsupported Body shape must not produce an empty RenderBody; returning
+        // null here causes CS0534 in the user's compilation, which is the correct failure signal
+        // until the Opaque/BC2001 path is implemented.
+        if (rootNode is null)
+            return null;
 
         return new ComponentModel(
             HintName: hintName,

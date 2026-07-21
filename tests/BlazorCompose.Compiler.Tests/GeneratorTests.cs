@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 
@@ -45,6 +46,32 @@ public sealed class GeneratorTests
         }
         """;
 
+    private const string BlockBodySource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        public partial class Counter : ComposeComponentBase
+        {
+            protected override View Body
+            {
+                get { return Text("Count"); }
+            }
+        }
+        """;
+
+    private const string UnrecognizedChildSource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        public partial class Counter : ComposeComponentBase
+        {
+            private View GetView() => Text("foo");
+
+            protected override View Body =>
+                VStack(GetView());
+        }
+        """;
+
     [Fact]
     public void PartialComponentGeneratesRenderBody()
     {
@@ -54,6 +81,8 @@ public sealed class GeneratorTests
         Assert.Contains(
             "protected override void RenderBody(global::Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder)",
             source);
+        Assert.Contains("__builder.OpenElement(0, \"span\")", source);
+        Assert.Contains("__builder.AddContent(1, \"Count\")", source);
     }
 
     [Fact]
@@ -93,5 +122,25 @@ public sealed class GeneratorTests
 
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Contains("Outer.Counter", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void BlockBodyDoesNotGenerateSourceAndProducesCS0534()
+    {
+        var result = CompilationTestHost.RunGenerator(BlockBodySource);
+
+        Assert.Empty(result.GeneratedSources);
+        Assert.Single(result.OutputCompilation.GetDiagnostics()
+            .Where(static d => d.Id == "CS0534"));
+    }
+
+    [Fact]
+    public void UnrecognizedChildDoesNotGenerateSourceAndProducesCS0534()
+    {
+        var result = CompilationTestHost.RunGenerator(UnrecognizedChildSource);
+
+        Assert.Empty(result.GeneratedSources);
+        Assert.Single(result.OutputCompilation.GetDiagnostics()
+            .Where(static d => d.Id == "CS0534"));
     }
 }

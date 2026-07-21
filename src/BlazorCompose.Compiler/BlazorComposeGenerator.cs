@@ -1,3 +1,4 @@
+using BlazorCompose.Compiler.Analysis;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -12,11 +13,20 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var components = context.SyntaxProvider
+        // Resolve the factory-method symbols once per compilation so incremental rebuilds that
+        // change only component syntax do not re-walk the BlazorCompose.UI type members.
+        var knownSymbols = context.CompilationProvider
+            .Select(static (compilation, _) => KnownSymbols.TryCreate(compilation));
+
+        var syntaxCandidates = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => node is ClassDeclarationSyntax { BaseList: not null },
-                static (syntaxContext, cancellationToken) =>
-                    ComponentModelFactory.TryCreate(syntaxContext, cancellationToken))
+                static (ctx, _) => ctx);
+
+        var components = syntaxCandidates
+            .Combine(knownSymbols)
+            .Select(static (pair, cancellationToken) =>
+                ComponentModelFactory.TryCreate(pair.Left, pair.Right, cancellationToken))
             .Where(static model => model is not null);
 
         context.RegisterSourceOutput(

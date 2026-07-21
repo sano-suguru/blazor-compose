@@ -32,8 +32,7 @@ internal static class RenderBodyEmitter
         sb.AppendLine($"    protected override void RenderBody({RtbType} __builder)");
         sb.AppendLine("    {");
 
-        if (model.RootNode is { } root)
-            EmitNode(sb, root, startSeq: 0, indent: "        ");
+        EmitNode(sb, model.RootNode, startSeq: 0, indent: "        ");
 
         sb.AppendLine("    }");
         sb.Append('}');
@@ -87,6 +86,6 @@ internal static class RenderBodyEmitter
         foreach (var child in node.Children)
             nextSeq = EmitNode(sb, child, nextSeq, indent);
         sb.AppendLine($"{indent}__builder.CloseElement();");
-        return seq + SequenceAllocator.Width(node);
+        return nextSeq;
     }
 }
