@@ -948,7 +948,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NameofOfNonParameterRemainsUnchangedAndCompiles()
+    public void NameofOfNonParameterCollapsesToCompileTimeConstantString()
     {
         const string source = """
             using BlazorCompose;
@@ -966,9 +966,76 @@ public sealed class GeneratorTests
         var result = CompilationTestHost.RunGenerator(source);
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
-        // A nameof that does not depend on a composable parameter is left verbatim and stays valid.
-        Assert.Contains("nameof(System.String)", generated);
-        Assert.Contains("__bc_arg_0_0", generated);
+        // Every nameof collapses to its compile-time constant string; nameof(System.String) is "String".
+        Assert.Contains("\"String\" + __bc_arg_0_0", generated);
+        Assert.DoesNotContain("nameof(", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void NameofOfUsingImportedTypeCollapsesToConstantAndCompiles()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            using System.Text;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Named() => Text(nameof(StringBuilder));
+
+                protected override View Body => Named();
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // 'StringBuilder' is only in scope through 'using System.Text;', which the generated file lacks;
+        // the nameof must collapse to its constant string rather than reference an out-of-scope type.
+        Assert.Contains("__builder.AddContent(1, \"StringBuilder\")", generated);
+        Assert.DoesNotContain("nameof(", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void NameofOfPrivateDefinitionMemberCollapsesToConstantAndCompiles()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("Widgets.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public static class Widgets
+                {
+                    private static readonly string _secret = "s";
+
+                    // Referenced so the private field is not reported as unused; the composable itself
+                    // only names it through nameof.
+                    public static string Reveal() => _secret;
+
+                    [Composable]
+                    public static View Show() => Text(nameof(_secret));
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => Widgets.Show();
+                }
+                """));
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // '_secret' is a private field of Widgets and does not exist inside Counter's generated RenderBody;
+        // nameof(_secret) must collapse to its constant string so it never references the vanished member.
+        Assert.Contains("__builder.AddContent(1, \"_secret\")", generated);
+        Assert.DoesNotContain("nameof(", generated);
         CompilationTestHost.AssertOutputCompiles(result);
     }
 
@@ -1257,5 +1324,136 @@ public sealed class GeneratorTests
         Assert.Contains("global::WidgetBase.Prefix()", generated);
         Assert.DoesNotContain("Label(", generated);
         CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    // -----------------------------------------------------------------------
+    // Using-dependent qualification: generic type/static references and
+    // extension methods invoked in instance syntax
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ComposableGenericTypeAndExtensionMethodQualifyInUsinglessOutput()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            using System.Collections.Generic;
+            using System.Linq;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Head(IEnumerable<string> items) => Text(items.First());
+
+                protected override View Body => Head(new List<string> { "a" });
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // The 'items.First()' extension call, only in scope through 'using System.Linq;', normalizes to a
+        // fully qualified static call, and the generic 'List<string>' argument is fully qualified.
+        Assert.Contains("global::System.Linq.Enumerable.First", generated);
+        Assert.Contains(
+            "global::System.Collections.Generic.IEnumerable<string> __bc_arg_0_0 = " +
+            "new global::System.Collections.Generic.List<string> { \"a\" };",
+            generated);
+        Assert.DoesNotContain(".First()", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void ComposableUnqualifiedGenericStaticMethodAndGenericTypeQualifyInUsinglessOutput()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            using static Factory;
+            using System.Collections.Generic;
+
+            public static class Factory
+            {
+                public static string Make<T>() => typeof(T).Name;
+            }
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Head() =>
+                    Text(Make<string>() + new Dictionary<string, int>().Count.ToString());
+
+                protected override View Body => Head();
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // The unqualified generic static call and generic type reference — both in scope only through
+        // 'using' directives the generated file lacks — are fully qualified while preserving type arguments.
+        Assert.Contains("global::Factory.Make<string>()", generated);
+        Assert.Contains("global::System.Collections.Generic.Dictionary<string, int>", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void ComponentBodyGenericTypeAndExtensionMethodQualifyAndCompile()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            using System.Collections.Generic;
+            using System.Linq;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                protected override View Body => Text((new List<string> { "a" }).First());
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // The shared analyzer also serves component Body expressions, so the same using-dependent generic
+        // type and instance-syntax extension call must qualify and compile there too.
+        Assert.Contains("global::System.Linq.Enumerable.First", generated);
+        Assert.Contains("new global::System.Collections.Generic.List<string> { \"a\" }", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void ComposableExtensionMethodWithUnnameableTypeArgumentReportsBC1002()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            using System.Collections.Generic;
+            using System.Linq;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Head(IEnumerable<string> items) =>
+                    Text(items.Select(x => new { N = x }).First().N);
+
+                protected override View Body => Head(new List<string> { "a" });
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // The reduced 'Select' fixes an anonymous type argument that cannot be named in generated component
+        // code, so normalization is not semantics-preserving and a precise BC1002 is reported instead.
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
+        Assert.Contains("cannot be named", message);
+        Assert.Empty(result.GeneratedSources);
     }
 }

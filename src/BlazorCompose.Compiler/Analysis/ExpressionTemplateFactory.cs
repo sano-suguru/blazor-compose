@@ -1,20 +1,28 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 
 namespace BlazorCompose.Compiler.Analysis;
 
 /// <summary>
 /// Normalizes a definition-side expression into a symbol-free <see cref="ExpressionTemplate"/> so it can
-/// be inlined at any expansion site.  Replacement decisions use Roslyn symbol identity — never textual
-/// substitution — so that:
+/// be inlined at any expansion site.  The generated <c>RenderBody</c> carries no <c>using</c> directives,
+/// so every name that would otherwise depend on an import must be made self-contained.  Replacement
+/// decisions use Roslyn symbol identity — never textual substitution — so that:
 /// <list type="bullet">
 /// <item>identifiers bound to composable parameters become <see cref="ParameterHoleExpressionSegment"/>;</item>
-/// <item>a <c>nameof(...)</c> whose operand depends on a composable parameter collapses to its
-/// compile-time constant string, because the captured parameter name no longer exists after expansion;</item>
-/// <item>unqualified type and static-member references are fully qualified;</item>
+/// <item>every <c>nameof(...)</c> collapses to its compile-time constant string, because the entity it
+/// names (a parameter replaced by a typed local, a private definition member, or a type in scope only
+/// through a using) generally does not exist at the expansion site;</item>
+/// <item>unqualified type and static-member references — including generic ones such as
+/// <c>List&lt;string&gt;</c> or <c>Make&lt;string&gt;</c> — are fully qualified while their written type
+/// arguments are preserved and independently qualified;</item>
+/// <item>an extension method invoked in instance syntax (<c>items.First()</c>) is normalized to a fully
+/// qualified static call, or reported as BC1002 when that rewrite cannot be made semantics-preserving;</item>
 /// <item>references to non-public members — whether unqualified or accessed through a receiver — record an
 /// accessibility requirement;</item>
 /// <item>references to source-local constructs (local functions or locals from an enclosing scope)
@@ -24,24 +32,50 @@ namespace BlazorCompose.Compiler.Analysis;
 /// </summary>
 internal static class ExpressionTemplateFactory
 {
+    // Fully qualified type name without its type-argument list.  Used to qualify only the identifier token
+    // of a generic name so the written type-argument syntax (including nullable annotations) survives and
+    // each type argument is qualified independently by the traversal.
+    private static readonly SymbolDisplayFormat QualifiedNameWithoutTypeArguments =
+        SymbolDisplayFormat.FullyQualifiedFormat.WithGenericsOptions(SymbolDisplayGenericsOptions.None);
+
     public static ExpressionTemplate Create(ExpressionSyntax expression, ComposableBodyContext context)
     {
         var replacements = new List<Replacement>();
-        var replacedSpans = new List<Microsoft.CodeAnalysis.Text.TextSpan>();
+        var replacedSpans = new List<TextSpan>();
 
-        // First pass: collapse every nameof(...) whose operand depends on a composable parameter into its
-        // compile-time constant string.  The parameter name it captures disappears after expansion, so the
-        // operator cannot survive as written; an unrelated nameof(...) is left untouched by the pass below.
+        // First pass: whole-invocation rewrites that must run before per-name normalization.
+        //  * every nameof(...) collapses to its compile-time constant string;
+        //  * an extension method invoked in instance syntax normalizes to a fully qualified static call.
+        // Both record the whole invocation span so the second pass never rewrites the receiver, method, or
+        // argument names inside them a second time.
         foreach (var node in expression.DescendantNodesAndSelf())
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
-            if (node is InvocationExpressionSyntax invocation
-                && TryCreateParameterDependentNameofConstant(invocation, context, out var constantText))
+            if (node is not InvocationExpressionSyntax invocation)
+                continue;
+
+            if (IsNestedInReplaced(invocation.Span, replacedSpans))
+                continue;
+
+            var nameofSegment = TryCreateNameofConstant(invocation, context);
+            if (nameofSegment is not null)
             {
                 replacements.Add(new Replacement(
                     invocation.Span,
-                    new LiteralExpressionSegment(constantText)));
+                    ImmutableArray.Create<ExpressionSegment>(nameofSegment)));
+                replacedSpans.Add(invocation.Span);
+                continue;
+            }
+
+            if (context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol
+                is IMethodSymbol { MethodKind: MethodKind.ReducedExtension } extensionMethod)
+            {
+                if (TryCreateExtensionMethodCall(invocation, extensionMethod, context, out var extensionSegments))
+                    replacements.Add(new Replacement(invocation.Span, extensionSegments));
+
+                // Whether normalized or rejected (a BC1002 was recorded inside), the invocation is fully
+                // handled here; record its span so the second pass leaves its inner names untouched.
                 replacedSpans.Add(invocation.Span);
             }
         }
@@ -55,9 +89,14 @@ internal static class ExpressionTemplateFactory
             if (node is not SimpleNameSyntax name)
                 continue;
 
-            // A name inside nameof(...) belongs either to a parameter-dependent nameof already replaced
-            // above or to an unrelated nameof kept verbatim; either way it must not be rewritten on its own.
+            // A name inside a nameof(...) belongs to an invocation already collapsed above; it must never
+            // be rewritten on its own.
             if (IsInsideNameof(name))
+                continue;
+
+            // A receiver, method, or type-argument name inside an already-rewritten invocation (an
+            // extension call, or a collapsed nameof) is owned by that whole-span replacement.
+            if (IsNestedInReplaced(name.Span, replacedSpans))
                 continue;
 
             // A member accessed through a receiver keeps its unqualified text (the receiver qualifies it),
@@ -68,10 +107,6 @@ internal static class ExpressionTemplateFactory
                 RecordMemberAccessRequirement(name, context);
                 continue;
             }
-
-            // Skip nodes nested inside an already-recorded replacement to avoid overlapping splices.
-            if (IsNestedInReplaced(name.Span, replacedSpans))
-                continue;
 
             var symbol = context.SemanticModel.GetSymbolInfo(name, context.CancellationToken).Symbol;
             if (symbol is null)
@@ -86,41 +121,53 @@ internal static class ExpressionTemplateFactory
             if (name is IdentifierNameSyntax
                 && context.TryGetParameterOrdinal(symbol, out var ordinal))
             {
-                replacements.Add(new Replacement(
-                    name.Span,
-                    new ParameterHoleExpressionSegment(ordinal)));
-                replacedSpans.Add(name.Span);
+                AddReplacement(replacements, replacedSpans, name.Span,
+                    new ParameterHoleExpressionSegment(ordinal));
                 continue;
             }
 
-            if (name is IdentifierNameSyntax && symbol is INamedTypeSymbol typeSymbol)
+            // A type reference — including a generic one such as List<string> — is fully qualified.  A
+            // generic name qualifies only its identifier token so the written type-argument list (with any
+            // nullable annotations) survives and each type argument is qualified independently below.
+            if (symbol is INamedTypeSymbol typeSymbol && name is IdentifierNameSyntax or GenericNameSyntax)
             {
                 RecordAccessRequirement(typeSymbol, context);
-                replacements.Add(new Replacement(
-                    name.Span,
-                    new LiteralExpressionSegment(
-                        typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))));
-                replacedSpans.Add(name.Span);
+                var span = IdentifierSpan(name);
+                var qualified = name is GenericNameSyntax
+                    ? typeSymbol.ToDisplayString(QualifiedNameWithoutTypeArguments)
+                    : typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                AddReplacement(replacements, replacedSpans, span, new LiteralExpressionSegment(qualified));
                 continue;
             }
 
-            if (name is IdentifierNameSyntax
+            // An unqualified static member — including a generic static method such as Make<string> — is
+            // qualified with its declaring type; a generic name again keeps its written type arguments.
+            if ((name is IdentifierNameSyntax or GenericNameSyntax)
                 && symbol is IFieldSymbol or IPropertySymbol or IMethodSymbol or IEventSymbol
                 && symbol.IsStatic
                 && !IsQualifiedReference(name))
             {
                 RecordAccessRequirement(symbol, context);
+                var span = IdentifierSpan(name);
                 var containing = symbol.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                replacements.Add(new Replacement(
-                    name.Span,
-                    new LiteralExpressionSegment($"{containing}.{symbol.Name}")));
-                replacedSpans.Add(name.Span);
+                AddReplacement(replacements, replacedSpans, span,
+                    new LiteralExpressionSegment($"{containing}.{symbol.Name}"));
             }
         }
 
         return replacements.Count == 0
             ? ExpressionTemplate.Literal(expression.ToString())
             : Splice(expression, replacements);
+    }
+
+    private static void AddReplacement(
+        List<Replacement> replacements,
+        List<TextSpan> replacedSpans,
+        TextSpan span,
+        ExpressionSegment segment)
+    {
+        replacements.Add(new Replacement(span, ImmutableArray.Create(segment)));
+        replacedSpans.Add(span);
     }
 
     private static ExpressionTemplate Splice(ExpressionSyntax expression, List<Replacement> replacements)
@@ -139,7 +186,9 @@ internal static class ExpressionTemplateFactory
             if (relativeStart > cursor)
                 segments.Add(new LiteralExpressionSegment(baseText.Substring(cursor, relativeStart - cursor)));
 
-            segments.Add(replacement.Segment);
+            foreach (var segment in replacement.Segments)
+                segments.Add(segment);
+
             cursor = relativeStart + replacement.Span.Length;
         }
 
@@ -218,51 +267,189 @@ internal static class ExpressionTemplateFactory
     }
 
     /// <summary>
-    /// Detects a <c>nameof(...)</c> operator whose operand depends on a composable parameter and returns
-    /// its compile-time constant string.  Because the parameter it names is replaced by a typed local at
-    /// every expansion site, the operator itself cannot be preserved; its constant value is emitted
-    /// instead.  A <c>nameof(...)</c> that does not reference a parameter (for example over a type or a
-    /// static member) is left untouched so it keeps its ordinary meaning.
+    /// Detects a <c>nameof(...)</c> operator and returns a literal segment carrying its compile-time
+    /// constant string.  Because the entity a nameof names (a parameter replaced by a typed local, a
+    /// private definition member, or a type in scope only through a using) generally does not exist at the
+    /// expansion site, the operator cannot survive as written and its constant value is emitted instead —
+    /// which is exactly what the C# compiler would have produced.  A method literally named <c>nameof</c>
+    /// is not a constant, so the constant value doubles as a reliable operator check.
     /// </summary>
-    private static bool TryCreateParameterDependentNameofConstant(
+    private static LiteralExpressionSegment? TryCreateNameofConstant(
         InvocationExpressionSyntax invocation,
-        ComposableBodyContext context,
-        out string constantText)
+        ComposableBodyContext context)
     {
-        constantText = string.Empty;
-
         if (invocation.Expression is not IdentifierNameSyntax { Identifier.Text: "nameof" })
-            return false;
+            return null;
 
-        // The nameof operator yields a compile-time constant string; a method literally named 'nameof'
-        // does not, so the constant value doubles as a reliable operator check.
         var constant = context.SemanticModel.GetConstantValue(invocation, context.CancellationToken);
         if (!constant.HasValue || constant.Value is not string value)
-            return false;
+            return null;
 
-        if (!NameofOperandReferencesParameter(invocation.ArgumentList, context))
-            return false;
+        return new LiteralExpressionSegment(SymbolDisplay.FormatLiteral(value, quote: true));
+    }
 
-        constantText = SymbolDisplay.FormatLiteral(value, quote: true);
+    /// <summary>
+    /// Normalizes an extension method invoked in instance syntax (<c>receiver.Method(args)</c>) into a
+    /// fully qualified static call (<c>global::Ns.Type.Method&lt;T&gt;(receiver, args)</c>), because the
+    /// generated file has no <c>using</c> directive to bring the method into scope.  The reduced receiver
+    /// becomes the first argument, carrying the original <c>this</c> parameter's ref kind, and the inferred
+    /// type arguments are emitted so the same instantiation is fixed.  Returns <see langword="false"/> and
+    /// reports BC1002 when the rewrite cannot be made semantics-preserving — a null-conditional receiver or
+    /// a type argument that cannot be named in generated component code.
+    /// </summary>
+    private static bool TryCreateExtensionMethodCall(
+        InvocationExpressionSyntax invocation,
+        IMethodSymbol method,
+        ComposableBodyContext context,
+        out ImmutableArray<ExpressionSegment> segments)
+    {
+        segments = ImmutableArray<ExpressionSegment>.Empty;
+
+        // Only 'receiver.Method(...)' can become a static call; a null-conditional 'receiver?.Method(...)'
+        // would change short-circuit semantics, so it is reported rather than silently rewritten.
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+        {
+            context.ReportUnsupportedReference(
+                invocation.GetLocation(),
+                $"invokes extension method '{method.Name}' in a form that cannot be normalized to a static call in generated component code");
+            return false;
+        }
+
+        foreach (var typeArgument in method.TypeArguments)
+        {
+            if (!IsNameableType(typeArgument))
+            {
+                context.ReportUnsupportedReference(
+                    invocation.GetLocation(),
+                    $"invokes extension method '{method.Name}' whose inferred type argument '{typeArgument.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}' cannot be named in generated component code");
+                return false;
+            }
+        }
+
+        var builder = ImmutableArray.CreateBuilder<ExpressionSegment>();
+
+        var prefix = new StringBuilder();
+        prefix.Append(method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+        prefix.Append('.');
+        prefix.Append(method.Name);
+        AppendTypeArguments(prefix, method.TypeArguments);
+        prefix.Append('(');
+        prefix.Append(ReceiverRefKindPrefix(method));
+        builder.Add(new LiteralExpressionSegment(prefix.ToString()));
+
+        // The reduced receiver becomes the first argument; supplied arguments keep their original order.
+        foreach (var segment in Create(memberAccess.Expression, context).Segments)
+            builder.Add(segment);
+
+        foreach (var argument in invocation.ArgumentList.Arguments)
+        {
+            builder.Add(new LiteralExpressionSegment(", " + LeadingArgumentText(argument)));
+            foreach (var segment in Create(argument.Expression, context).Segments)
+                builder.Add(segment);
+        }
+
+        builder.Add(new LiteralExpressionSegment(")"));
+
+        // The declaring type and the method itself must be accessible from the expansion site.
+        RecordAccessRequirement(method.ContainingType, context);
+        RecordAccessRequirement(method, context);
+
+        segments = builder.ToImmutable();
         return true;
     }
 
-    private static bool NameofOperandReferencesParameter(
-        ArgumentListSyntax argumentList,
-        ComposableBodyContext context)
+    private static void AppendTypeArguments(StringBuilder builder, ImmutableArray<ITypeSymbol> typeArguments)
     {
-        foreach (var node in argumentList.DescendantNodes())
-        {
-            if (node is not IdentifierNameSyntax identifier)
-                continue;
+        if (typeArguments.Length == 0)
+            return;
 
-            var symbol = context.SemanticModel.GetSymbolInfo(identifier, context.CancellationToken).Symbol;
-            if (symbol is not null && context.TryGetParameterOrdinal(symbol, out _))
-                return true;
+        builder.Append('<');
+        for (var index = 0; index < typeArguments.Length; index++)
+        {
+            if (index > 0)
+                builder.Append(", ");
+            builder.Append(typeArguments[index].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
         }
 
-        return false;
+        builder.Append('>');
     }
+
+    /// <summary>
+    /// Returns the keyword (<c>ref </c> / <c>in </c>) required to pass the reduced receiver as the first
+    /// argument of the static call, matching the extension's original <c>this</c> parameter ref kind so a
+    /// by-reference receiver is not silently copied.  Ordinary by-value receivers need no keyword.
+    /// </summary>
+    private static string ReceiverRefKindPrefix(IMethodSymbol method)
+    {
+        if (method.ReducedFrom is not { Parameters.Length: > 0 } original)
+            return string.Empty;
+
+        return original.Parameters[0].RefKind switch
+        {
+            RefKind.Ref => "ref ",
+            RefKind.In => "in ",
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>
+    /// Returns the leading tokens of an argument that precede its expression (a <c>ref</c>/<c>in</c>/
+    /// <c>out</c> keyword or a <c>name:</c> label) so they are preserved when the expression is rebuilt.
+    /// A plain positional value argument has none.
+    /// </summary>
+    private static string LeadingArgumentText(ArgumentSyntax argument)
+    {
+        var offset = argument.Expression.SpanStart - argument.SpanStart;
+        return offset > 0 ? argument.ToString().Substring(0, offset) : string.Empty;
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="type"/> can be written as a fully qualified type name in a
+    /// generated file with no <c>using</c> directives.  Anonymous types, pointer types, open type
+    /// parameters, file-local types, and otherwise unnameable types cannot, so an extension method that
+    /// fixes such a type argument cannot be normalized in a semantics-preserving way.
+    /// </summary>
+    private static bool IsNameableType(ITypeSymbol type)
+    {
+        switch (type)
+        {
+            case IArrayTypeSymbol array:
+                return IsNameableType(array.ElementType);
+
+            case IPointerTypeSymbol:
+                return false;
+
+            case ITypeParameterSymbol:
+                return false;
+
+            case IDynamicTypeSymbol:
+                return true;
+
+            case INamedTypeSymbol named:
+                if (named.IsAnonymousType || named.IsFileLocal || !named.CanBeReferencedByName)
+                    return false;
+
+                for (var containing = named.ContainingType; containing is not null; containing = containing.ContainingType)
+                {
+                    if (containing.IsFileLocal || !containing.CanBeReferencedByName)
+                        return false;
+                }
+
+                foreach (var argument in named.TypeArguments)
+                {
+                    if (!IsNameableType(argument))
+                        return false;
+                }
+
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    private static TextSpan IdentifierSpan(SimpleNameSyntax name) =>
+        name is GenericNameSyntax generic ? generic.Identifier.Span : name.Span;
 
     private static bool IsMemberAccessName(SimpleNameSyntax name) =>
         name.Parent switch
@@ -294,9 +481,7 @@ internal static class ExpressionTemplateFactory
         return false;
     }
 
-    private static bool IsNestedInReplaced(
-        Microsoft.CodeAnalysis.Text.TextSpan span,
-        List<Microsoft.CodeAnalysis.Text.TextSpan> replacedSpans)
+    private static bool IsNestedInReplaced(TextSpan span, List<TextSpan> replacedSpans)
     {
         foreach (var replaced in replacedSpans)
         {
@@ -308,6 +493,6 @@ internal static class ExpressionTemplateFactory
     }
 
     private readonly record struct Replacement(
-        Microsoft.CodeAnalysis.Text.TextSpan Span,
-        ExpressionSegment Segment);
+        TextSpan Span,
+        ImmutableArray<ExpressionSegment> Segments);
 }
