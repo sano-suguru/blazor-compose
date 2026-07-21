@@ -8,6 +8,7 @@ This repository now has its initial .NET foundation in place. `WHITEPAPER.md` an
 - `BlazorCompose.slnx` contains six in-solution projects: `BlazorCompose.Runtime`, `BlazorCompose.Compiler`, `BlazorCompose.Runtime.Tests`, `BlazorCompose.Compiler.Tests`, `BlazorCompose.IntegrationTests`, and `BlazorCompose.Samples.Counter`.
 - `tests/BlazorCompose.TrimTests` and `tests/BlazorCompose.TrimTestApp` exist in the repository but remain outside the solution until the local package-based trimming workflow is introduced.
 - Repository-wide build configuration lives in `Directory.Build.props`, `Directory.Packages.props`, and `.editorconfig`.
+- CI workflow (`.github/workflows/ci.yml`) runs restore/build/test/pack/verify/trim-publish on Ubuntu (linux-x64) and macOS (osx-arm64) with SDK 10.0.300.
 - Do not invent additional build, test, lint, format, or single-test commands. Use the validated commands below unless committed tooling files add more.
 
 ## Validated commands
@@ -20,6 +21,10 @@ This repository now has its initial .NET foundation in place. `WHITEPAPER.md` an
 - Pack: `dotnet pack src/BlazorCompose.Runtime/BlazorCompose.Runtime.csproj -c Release -o artifacts/package`
 - Verify package layout: `bash eng/verify-package.sh artifacts/package/BlazorCompose.0.1.0-dev.nupkg`
 - Test package contents: `dotnet test tests/BlazorCompose.TrimTests/BlazorCompose.TrimTests.csproj --filter FullyQualifiedName~PackageContentsTests`
+- Publish trimmed (osx-arm64): `dotnet publish tests/BlazorCompose.TrimTestApp/BlazorCompose.TrimTestApp.csproj -c Release -r osx-arm64 --self-contained true --configfile tests/BlazorCompose.TrimTestApp/NuGet.config`
+- Publish trimmed (linux-x64): `dotnet publish tests/BlazorCompose.TrimTestApp/BlazorCompose.TrimTestApp.csproj -c Release -r linux-x64 --self-contained true --configfile tests/BlazorCompose.TrimTestApp/NuGet.config`
+- Run trim tests: `BLAZORCOMPOSE_TRIM_OUTPUT=$(pwd)/tests/BlazorCompose.TrimTestApp/bin/Release/net10.0/osx-arm64/publish dotnet test tests/BlazorCompose.TrimTests/BlazorCompose.TrimTests.csproj`
+- Hot Reload (sample): `dotnet watch --project samples/BlazorCompose.Samples.Counter/BlazorCompose.Samples.Counter.csproj`
 
 ## Architecture
 
