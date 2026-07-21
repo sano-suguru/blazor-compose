@@ -14,6 +14,7 @@ namespace BlazorCompose.Compiler.Tests;
 /// <summary>Encapsulates the output of a single generator run for assertion in tests.</summary>
 public sealed record GeneratorRunResult(
     GeneratorDriver Driver,
+    Compilation OutputCompilation,
     ImmutableArray<GeneratedSourceResult> GeneratedSources,
     IReadOnlyDictionary<string, ImmutableArray<IncrementalGeneratorRunStep>> TrackedSteps,
     ImmutableArray<Diagnostic> Diagnostics);
@@ -28,7 +29,7 @@ public static class CompilationTestHost
     /// <summary>
     /// Parses <paramref name="source"/>, creates a test compilation, runs
     /// <see cref="BlazorComposeGenerator"/>, and returns the updated driver together with all
-    /// generated sources, tracked incremental steps, and generator diagnostics.
+    /// generated sources, tracked incremental steps, the updated compilation, and generator diagnostics.
     /// </summary>
     public static GeneratorRunResult RunGenerator(string source)
     {
@@ -42,7 +43,7 @@ public static class CompilationTestHost
             generators: new[] { new BlazorComposeGenerator().AsSourceGenerator() },
             driverOptions: driverOptions);
 
-        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var diagnostics);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
 
         var runResult = driver.GetRunResult();
 
@@ -55,7 +56,7 @@ public static class CompilationTestHost
                 ? runResult.Results[0].TrackedSteps
                 : ImmutableDictionary<string, ImmutableArray<IncrementalGeneratorRunStep>>.Empty;
 
-        return new GeneratorRunResult(driver, generatedSources, trackedSteps, diagnostics);
+        return new GeneratorRunResult(driver, outputCompilation, generatedSources, trackedSteps, diagnostics);
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using BlazorCompose.Compiler;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -29,7 +30,7 @@ public sealed class PartialComponentAnalyzer : DiagnosticAnalyzer
         if (symbol.TypeKind != TypeKind.Class)
             return;
 
-        if (!InheritsFromComposeComponentBase(symbol))
+        if (!ComposeComponentBaseFacts.InheritsFromComposeComponentBase(symbol))
             return;
 
         var isPartial = symbol.DeclaringSyntaxReferences
@@ -52,21 +53,5 @@ public sealed class PartialComponentAnalyzer : DiagnosticAnalyzer
                 firstDeclaration.Identifier.GetLocation(),
                 symbol.Name));
         }
-    }
-
-    private static bool InheritsFromComposeComponentBase(INamedTypeSymbol symbol)
-    {
-        var current = symbol.BaseType;
-        while (current is not null)
-        {
-            if (current.Name == "ComposeComponentBase" &&
-                current.ContainingNamespace is { IsGlobalNamespace: false, Name: "BlazorCompose" } ns &&
-                ns.ContainingNamespace.IsGlobalNamespace)
-            {
-                return true;
-            }
-            current = current.BaseType;
-        }
-        return false;
     }
 }

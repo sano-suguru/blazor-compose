@@ -30,7 +30,7 @@ internal static class ComponentModelFactory
         if (symbol.ContainingType is not null)
             return null;
 
-        if (!InheritsFromComposeComponentBase(symbol))
+        if (!ComposeComponentBaseFacts.InheritsFromComposeComponentBase(symbol))
             return null;
 
         var namespaceName = symbol.ContainingNamespace is { IsGlobalNamespace: false } ns
@@ -47,21 +47,5 @@ internal static class ComponentModelFactory
             HintName: hintName,
             ClassName: symbol.Name,
             Namespace: namespaceName);
-    }
-
-    private static bool InheritsFromComposeComponentBase(INamedTypeSymbol symbol)
-    {
-        var current = symbol.BaseType;
-        while (current is not null)
-        {
-            if (current.Name == "ComposeComponentBase" &&
-                current.ContainingNamespace is { IsGlobalNamespace: false, Name: "BlazorCompose" } ns &&
-                ns.ContainingNamespace.IsGlobalNamespace)
-            {
-                return true;
-            }
-            current = current.BaseType;
-        }
-        return false;
     }
 }
