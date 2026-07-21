@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-latest
+            rid: osx-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.300
+
+      - run: dotnet restore BlazorCompose.slnx
+
+      - run: dotnet build BlazorCompose.slnx --no-restore
+
+      - run: dotnet test BlazorCompose.slnx --no-build
+
+      - run: dotnet pack src/BlazorCompose.Runtime/BlazorCompose.Runtime.csproj -c Release -o artifacts/package
+
+      - run: bash eng/verify-package.sh artifacts/package/BlazorCompose.0.1.0-dev.nupkg
+
+      - run: rm -rf artifacts/nuget-packages/blazorcompose/0.1.0-dev
+
+      - run: dotnet publish tests/BlazorCompose.TrimTestApp/BlazorCompose.TrimTestApp.csproj -c Release -r ${{ matrix.rid }} --self-contained true --configfile tests/BlazorCompose.TrimTestApp/NuGet.config
+
+      - run: dotnet test tests/BlazorCompose.TrimTests/BlazorCompose.TrimTests.csproj
+        env:
+          BLAZORCOMPOSE_TRIM_OUTPUT: ${{ github.workspace }}/tests/BlazorCompose.TrimTestApp/bin/Release/net10.0/${{ matrix.rid }}/publish

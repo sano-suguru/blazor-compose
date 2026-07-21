@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <ILLinkTreatWarningsAsErrors>true</ILLinkTreatWarningsAsErrors>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <RestorePackagesPath>../../artifacts/nuget-packages</RestorePackagesPath>
+    <!-- Top-level statements synthesize a Program class outside any namespace; CA1050 is irrelevant here. -->
+    <NoWarn>CA1050</NoWarn>
+    <!-- Computed path to the dev-version cache that must be cleared before restore. -->
+    <_BlazorComposeDevCachePath>$(MSBuildThisFileDirectory)../../artifacts/nuget-packages/blazorcompose/0.1.0-dev</_BlazorComposeDevCachePath>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="BlazorCompose" />
+  </ItemGroup>
+
+  <!-- Cross-platform cache purge: delete only the isolated 0.1.0-dev cache before restore
+       so NuGet cannot reuse stale package contents for the fixed development version.
+       Only fires during actual NuGet restore (MSBuildRestoreSessionId is set). -->
+  <Target Name="PurgeBlazorComposeDevCache" BeforeTargets="Restore" Condition="'$(MSBuildRestoreSessionId)' != ''">
+    <Message Importance="high" Text="Purging stale dev cache: $(_BlazorComposeDevCachePath)" Condition="Exists('$(_BlazorComposeDevCachePath)')" />
+    <RemoveDir Directories="$(_BlazorComposeDevCachePath)" Condition="Exists('$(_BlazorComposeDevCachePath)')" />
+  </Target>
+</Project>

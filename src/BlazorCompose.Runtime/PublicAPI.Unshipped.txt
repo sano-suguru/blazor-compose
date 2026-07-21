@@ -1,0 +1,13 @@
+#nullable enable
+BlazorCompose.ComposeComponentBase
+BlazorCompose.ComposeComponentBase.ComposeComponentBase() -> void
+abstract BlazorCompose.ComposeComponentBase.Body.get -> BlazorCompose.View
+override sealed BlazorCompose.ComposeComponentBase.BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder! builder) -> void
+abstract BlazorCompose.ComposeComponentBase.RenderBody(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder! builder) -> void
+BlazorCompose.UI
+static BlazorCompose.UI.Button(string! label, System.Action! onClick) -> BlazorCompose.View
+static BlazorCompose.UI.If(bool condition, System.Func<BlazorCompose.View>! then, System.Func<BlazorCompose.View>? otherwise = null) -> BlazorCompose.View
+static BlazorCompose.UI.Text(string! content) -> BlazorCompose.View
+static BlazorCompose.UI.VStack(params BlazorCompose.View[]! children) -> BlazorCompose.View
+BlazorCompose.View
+BlazorCompose.View.View() -> void

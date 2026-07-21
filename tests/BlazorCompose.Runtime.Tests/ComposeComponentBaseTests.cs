@@ -1,0 +1,69 @@
+using BlazorCompose;
+using Microsoft.AspNetCore.Components.Rendering;
+
+namespace BlazorCompose.Runtime.Tests;
+
+public sealed class ComposeComponentBaseTests
+{
+    [Fact]
+    public void BuildRenderTreeDelegatesToGeneratedRenderBody()
+    {
+        var component = new TestComponent();
+        var builder = new RenderTreeBuilder();
+
+        component.Render(builder);
+
+        Assert.Equal(1, component.RenderBodyCalls);
+    }
+
+    [Fact]
+    public void BuildRenderTreeDoesNotEvaluateBody()
+    {
+        var component = new BodyThrowsComponent();
+        var builder = new RenderTreeBuilder();
+
+        var exception = Record.Exception(() => component.Render(builder));
+
+        Assert.Null(exception);
+        Assert.Equal(1, component.RenderBodyCalls);
+    }
+
+    [Fact]
+    public void UiFactoriesRemainInertAtRuntime()
+    {
+        var onClickCalled = false;
+
+        _ = UI.Text("Hello");
+        _ = UI.Button("Increment", () => onClickCalled = true);
+        _ = UI.VStack(
+            UI.Text("Child"),
+            UI.If(
+                condition: true,
+                then: static () => throw new InvalidOperationException("Then branch should not run."),
+                otherwise: static () => throw new InvalidOperationException("Else branch should not run.")));
+
+        Assert.False(onClickCalled);
+    }
+
+    private sealed class TestComponent : ComposeComponentBase
+    {
+        public int RenderBodyCalls { get; private set; }
+
+        protected override View Body => default;
+
+        protected override void RenderBody(RenderTreeBuilder builder) => RenderBodyCalls++;
+
+        public void Render(RenderTreeBuilder builder) => BuildRenderTree(builder);
+    }
+
+    private sealed class BodyThrowsComponent : ComposeComponentBase
+    {
+        public int RenderBodyCalls { get; private set; }
+
+        protected override View Body => throw new InvalidOperationException("Body should remain inert at runtime.");
+
+        protected override void RenderBody(RenderTreeBuilder builder) => RenderBodyCalls++;
+
+        public void Render(RenderTreeBuilder builder) => BuildRenderTree(builder);
+    }
+}

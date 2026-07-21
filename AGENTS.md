@@ -2,11 +2,29 @@
 
 ## Repository status and commands
 
-This repository is currently in the specification stage. `WHITEPAPER.md` and `YELLOWPAPER.md` are the authoritative sources; there is no committed solution, project, build, test, lint, or format configuration yet.
+This repository now has its initial .NET foundation in place. `WHITEPAPER.md` and `YELLOWPAPER.md` remain the authoritative product and technical specifications, and implementation changes must stay consistent with both papers where their decisions overlap.
 
-- Do not invent build, test, lint, format, or single-test commands. Discover and document them from committed project files when implementation is added.
-- Do not infer a source-tree layout that is not present in the repository.
-- Keep changes to either paper consistent with the other where product-level decisions and formal technical rules overlap.
+- `global.json` pins SDK `10.0.300` with `latestPatch` roll-forward.
+- `BlazorCompose.slnx` contains six in-solution projects: `BlazorCompose.Runtime`, `BlazorCompose.Compiler`, `BlazorCompose.Runtime.Tests`, `BlazorCompose.Compiler.Tests`, `BlazorCompose.IntegrationTests`, and `BlazorCompose.Samples.Counter`.
+- `tests/BlazorCompose.TrimTests` and `tests/BlazorCompose.TrimTestApp` exist in the repository but remain outside the solution until the local package-based trimming workflow is introduced.
+- Repository-wide build configuration lives in `Directory.Build.props`, `Directory.Packages.props`, and `.editorconfig`.
+- CI workflow (`.github/workflows/ci.yml`) runs restore/build/test/pack/verify/trim-publish on Ubuntu (linux-x64) and macOS (osx-arm64) with SDK 10.0.300.
+- Do not invent additional build, test, lint, format, or single-test commands. Use the validated commands below unless committed tooling files add more.
+
+## Validated commands
+
+- Restore: `dotnet restore BlazorCompose.slnx`
+- Build: `dotnet build BlazorCompose.slnx --no-restore`
+- Test all: `dotnet test BlazorCompose.slnx --no-build`
+- Test one project: `dotnet test tests/BlazorCompose.Compiler.Tests/BlazorCompose.Compiler.Tests.csproj --no-build`
+- Test one case: `dotnet test tests/BlazorCompose.Compiler.Tests/BlazorCompose.Compiler.Tests.csproj --no-build --filter FullyQualifiedName~GeneratorTests`
+- Pack: `dotnet pack src/BlazorCompose.Runtime/BlazorCompose.Runtime.csproj -c Release -o artifacts/package`
+- Verify package layout: `bash eng/verify-package.sh artifacts/package/BlazorCompose.0.1.0-dev.nupkg`
+- Test package contents: `dotnet test tests/BlazorCompose.TrimTests/BlazorCompose.TrimTests.csproj --filter FullyQualifiedName~PackageContentsTests`
+- Publish trimmed (osx-arm64): `dotnet publish tests/BlazorCompose.TrimTestApp/BlazorCompose.TrimTestApp.csproj -c Release -r osx-arm64 --self-contained true --configfile tests/BlazorCompose.TrimTestApp/NuGet.config`
+- Publish trimmed (linux-x64): `dotnet publish tests/BlazorCompose.TrimTestApp/BlazorCompose.TrimTestApp.csproj -c Release -r linux-x64 --self-contained true --configfile tests/BlazorCompose.TrimTestApp/NuGet.config`
+- Run trim tests: `BLAZORCOMPOSE_TRIM_OUTPUT=$(pwd)/tests/BlazorCompose.TrimTestApp/bin/Release/net10.0/osx-arm64/publish dotnet test tests/BlazorCompose.TrimTests/BlazorCompose.TrimTests.csproj`
+- Hot Reload (sample): `dotnet watch --project samples/BlazorCompose.Samples.Counter/BlazorCompose.Samples.Counter.csproj`
 
 ## Architecture
 

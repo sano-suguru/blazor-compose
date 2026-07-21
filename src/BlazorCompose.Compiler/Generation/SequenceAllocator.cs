@@ -1,0 +1,41 @@
+using System;
+using System.Linq;
+
+namespace BlazorCompose.Compiler.Generation;
+
+/// <summary>
+/// Computes preorder sequence widths for the SSC render-node tree.
+///
+/// <para>
+/// <em>Width</em> is defined as the count of <c>RenderTreeBuilder</c> calls that consume a sequence
+/// argument in the subtree rooted at the given node.  <c>CloseElement</c> and <c>CloseRegion</c>
+/// do <em>not</em> consume sequence numbers and are therefore excluded from the width calculation.
+/// </para>
+/// </summary>
+internal static class SequenceAllocator
+{
+    /// <summary>
+    /// Returns the number of sequence-consuming <c>RenderTreeBuilder</c> calls produced by
+    /// <paramref name="node"/> and its entire subtree.
+    /// </summary>
+    public static int Width(RenderNode node) => node switch
+    {
+        // OpenElement("span") + AddContent = 2 calls
+        TextNode => 2,
+
+        // OpenElement("button") + AddAttribute("onclick") + AddContent = 3 calls
+        ButtonNode => 3,
+
+        // OpenElement("div") = 1 call, plus the sum of all children
+        VStackNode { Children: var children } => 1 + children.Sum(Width),
+
+        // OpenRegion(k) = 1 call, then both branches (disjoint ranges: then=[k+1, k+1+W(T1)),
+        // else=[k+1+W(T1), k+1+W(T1)+W(T2))).  Both widths are reserved regardless of which
+        // branch executes so that the sequence of any following sibling is stable.
+        IfNode { Then: var then, Otherwise: var otherwise } =>
+            1 + Width(then) + (otherwise is null ? 0 : Width(otherwise)),
+
+        _ => throw new NotSupportedException(
+            $"Unknown RenderNode type '{node.GetType().Name}'; add a Width case for it."),
+    };
+}
