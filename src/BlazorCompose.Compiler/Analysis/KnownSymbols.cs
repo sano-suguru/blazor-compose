@@ -8,9 +8,11 @@ namespace BlazorCompose.Compiler.Analysis;
 /// methods so that expression analysis can compare symbols by identity rather than by name.
 /// </summary>
 /// <remarks>
-/// Implements value equality based on symbol availability (present/absent) rather than Roslyn
-/// object identity.  This ensures that unrelated compilation changes (e.g., editing a different
-/// syntax tree) do not invalidate every component model that was Combined with KnownSymbols.
+/// Implements value equality based on a stable signature fingerprint of each recognized method.
+/// The fingerprint captures the fully qualified return type and parameter signatures so that any
+/// change to the <c>BlazorCompose.UI</c> API surface (e.g., adding/removing/retyping a parameter)
+/// invalidates the downstream pipeline.  Symbol instances are retained for current-run identity
+/// checks in <see cref="ComponentModelFactory"/> but are never compared across compilations.
 /// </remarks>
 internal sealed class KnownSymbols : IEquatable<KnownSymbols>
 {
@@ -25,6 +27,9 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
 
     /// <summary>Resolved symbol for <c>BlazorCompose.UI.If(bool, Func&lt;View&gt;, Func&lt;View&gt;?)</c>, or <see langword="null"/> if unavailable.</summary>
     public IMethodSymbol? IfMethod { get; }
+
+    // Stable value fingerprint computed once at construction, used for equality/hashing.
+    private readonly string _fingerprint;
 
     private KnownSymbols(INamedTypeSymbol uiType)
     {
@@ -49,6 +54,8 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
                     break;
             }
         }
+
+        _fingerprint = BuildFingerprint(TextMethod, ButtonMethod, VStackMethod, IfMethod);
     }
 
     /// <summary>
@@ -62,36 +69,59 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
     }
 
     // ---------------------------------------------------------------------------
-    // Value equality — based on symbol presence, not Roslyn object identity
+    // Value equality — based on stable signature fingerprint
     // ---------------------------------------------------------------------------
 
     public bool Equals(KnownSymbols? other)
     {
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
-
-        // Two KnownSymbols instances are equal when all factory method slots have the same
-        // presence (non-null vs. null).  Signature details cannot change without a recompile
-        // of the runtime assembly which would already invalidate the CompilationProvider.
-        return (TextMethod is not null) == (other.TextMethod is not null)
-            && (ButtonMethod is not null) == (other.ButtonMethod is not null)
-            && (VStackMethod is not null) == (other.VStackMethod is not null)
-            && (IfMethod is not null) == (other.IfMethod is not null);
+        return string.Equals(_fingerprint, other._fingerprint, StringComparison.Ordinal);
     }
 
     public override bool Equals(object? obj) => Equals(obj as KnownSymbols);
 
-    public override int GetHashCode()
+    public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(_fingerprint);
+
+    // ---------------------------------------------------------------------------
+    // Fingerprint construction
+    // ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// Produces a deterministic string that changes whenever the semantic signature of any
+    /// recognized UI method changes.  Format per method:
+    /// <c>ContainingType.Name(ParamType1,ParamType2):ReturnType</c>
+    /// A null method contributes the literal <c>-</c>.
+    /// </summary>
+    private static string BuildFingerprint(params IMethodSymbol?[] methods)
     {
-        // Hash reflects presence/absence only — stable across compilations.
-        unchecked
+        var builder = new System.Text.StringBuilder(256);
+        for (int i = 0; i < methods.Length; i++)
         {
-            int hash = 17;
-            hash = hash * 31 + (TextMethod is not null ? 1 : 0);
-            hash = hash * 31 + (ButtonMethod is not null ? 1 : 0);
-            hash = hash * 31 + (VStackMethod is not null ? 1 : 0);
-            hash = hash * 31 + (IfMethod is not null ? 1 : 0);
-            return hash;
+            if (i > 0) builder.Append('|');
+
+            var m = methods[i];
+            if (m is null)
+            {
+                builder.Append('-');
+                continue;
+            }
+
+            builder.Append(m.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+            builder.Append('.');
+            builder.Append(m.Name);
+            builder.Append('(');
+            for (int p = 0; p < m.Parameters.Length; p++)
+            {
+                if (p > 0) builder.Append(',');
+                if (m.Parameters[p].IsParams) builder.Append("params ");
+                builder.Append(m.Parameters[p].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+            }
+            builder.Append(')');
+            builder.Append(':');
+            builder.Append(m.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
         }
+
+        return builder.ToString();
     }
 }
