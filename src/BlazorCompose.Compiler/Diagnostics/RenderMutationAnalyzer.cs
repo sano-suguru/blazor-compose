@@ -8,8 +8,8 @@ using Microsoft.CodeAnalysis.Operations;
 namespace BlazorCompose.Compiler.Diagnostics;
 
 /// <summary>
-/// Reports BC3001 when a <c>Body</c> getter or <c>[Composable]</c> method directly mutates
-/// instance state of the containing component during rendering.
+/// Reports BC3001 when a <c>Body</c> getter directly mutates instance state of the
+/// containing component during rendering.
 /// </summary>
 /// <remarks>
 /// <para>

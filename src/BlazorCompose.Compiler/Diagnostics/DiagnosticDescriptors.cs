@@ -18,8 +18,8 @@ internal static class DiagnosticDescriptors
         description: "Classes that derive from ComposeComponentBase must be declared partial so the source generator can emit the RenderBody override.");
 
     /// <summary>
-    /// BC3001: A <c>Body</c> getter or <c>[Composable]</c> method must not mutate component state
-    /// (single-direction data-flow violation).
+    /// BC3001: A <c>Body</c> getter must not mutate component state (single-direction
+    /// data-flow violation).
     /// The initial detectable boundary covers statically identifiable direct writes (field assignments,
     /// property assignments, and increment/decrement operators) whose target is an instance member of
     /// the containing component.  Recognized deferred event handler lambdas (the <c>Button</c> onClick
