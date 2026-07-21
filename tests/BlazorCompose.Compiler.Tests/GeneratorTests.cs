@@ -630,6 +630,104 @@ public sealed class GeneratorTests
     }
 
     [Fact]
+    public void ProtectedCrossTypeReferenceFromUnrelatedComponentReportsBC1002AtCall()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("WidgetBase.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public abstract class WidgetBase
+                {
+                    protected static string Prefix() => "P:";
+
+                    [Composable]
+                    public static View Label(string value) => Text(Prefix() + value);
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => WidgetBase.Label("x");
+                }
+                """));
+
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
+        Assert.Contains("Prefix", message);
+        Assert.Contains("not accessible", message);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void ProtectedInternalCrossTypeReferenceIsAccessibleThroughInternalHalf()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("WidgetBase.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public abstract class WidgetBase
+                {
+                    protected internal static string Prefix() => "P:";
+
+                    [Composable]
+                    public static View Label(string value) => Text(Prefix() + value);
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => WidgetBase.Label("x");
+                }
+                """));
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+        Assert.Contains("global::WidgetBase.Prefix", generated);
+        Assert.DoesNotContain("Label(", generated);
+    }
+
+    [Fact]
+    public void PrivateProtectedCrossTypeReferenceFromUnrelatedComponentReportsBC1002AtCall()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("WidgetBase.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public abstract class WidgetBase
+                {
+                    private protected static string Prefix() => "P:";
+
+                    [Composable]
+                    public static View Label(string value) => Text(Prefix() + value);
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => WidgetBase.Label("x");
+                }
+                """));
+
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
+        Assert.Contains("Prefix", message);
+        Assert.Contains("not accessible", message);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
     public void MetadataOnlyComposableReportsBC1002AtCall()
     {
         var libraryReference = CompilationTestHost.CompileToMetadataReference("""

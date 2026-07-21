@@ -159,7 +159,6 @@ internal static class ExpressionTemplateFactory
         {
             Accessibility.Private => (ComposableAccessRequirementKind?)ComposableAccessRequirementKind.SameContainingType,
             Accessibility.Protected => ComposableAccessRequirementKind.DerivedContainingType,
-            Accessibility.ProtectedOrInternal => ComposableAccessRequirementKind.DerivedContainingType,
             Accessibility.ProtectedAndInternal => ComposableAccessRequirementKind.DerivedContainingType,
             _ => null,
         };

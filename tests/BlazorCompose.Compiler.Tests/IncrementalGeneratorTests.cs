@@ -315,6 +315,19 @@ public sealed class IncrementalGeneratorTests
         }
         """;
 
+    private const string BadgesSource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        namespace TestNs;
+
+        public static class Badges
+        {
+            [Composable]
+            public static View Badge(string value) => Text("[" + value + "]");
+        }
+        """;
+
     private const string WidgetsModifiedSource = """
         using BlazorCompose;
         using static BlazorCompose.UI;
@@ -423,10 +436,12 @@ public sealed class IncrementalGeneratorTests
     {
         var registryForward = ExtractRegistry(
             ParseTree(WidgetsSource, "Widgets.cs"),
+            ParseTree(BadgesSource, "Badges.cs"),
             ParseTree(CallerSource, "Caller.cs"));
 
         var registryReversed = ExtractRegistry(
             ParseTree(CallerSource, "Caller.cs"),
+            ParseTree(BadgesSource, "Badges.cs"),
             ParseTree(WidgetsSource, "Widgets.cs"));
 
         Assert.Equal(registryForward, registryReversed);
