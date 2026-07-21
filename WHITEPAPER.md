@@ -217,7 +217,7 @@ public abstract class ComposeComponentBase : ComponentBase
 }
 ```
 
-`Body` は実行時に一度も呼び出されません。ファクトリ・装飾メソッドの実体はすべて `default(View)` を返す慣性(inert)実装であり、万一評価されても副作用はなく、AOTビルドではILトリマーにより除去されます。
+`Body` は実行時に一度も呼び出されません。ファクトリ・装飾メソッドの実体はすべて `default(View)` を返す慣性(inert)実装であり、万一評価されても副作用はなく、AOTビルドではILトリマーにより除去されます。この除去はPoCのILメタデータ検査(`System.Reflection.Metadata`によるMethodDef不在確認)で検証済みです。
 
 ### 5.2 シーケンス番号の静的確定
 
@@ -308,7 +308,7 @@ protected override View Body =>
 
 ### 7.3 Wasmバイナリサイズ
 
-パラメータバインディングを含む全機構がリフレクション・フリー(`System.Reflection` / `System.Linq.Expressions` へのランタイム依存ゼロ)であるため、ILトリマーが未使用コードをアグレッシブに削除できます。リフレクションベースのバインディングを持つ同等ライブラリ比で、AOTコンパイル後のWasmペイロードを約20〜30%削減(予測値)と見込みます。素のRazor構成との比較ではほぼ同等です。
+パラメータバインディングを含む全機構がリフレクション・フリー(`System.Reflection` / `System.Linq.Expressions` へのランタイム依存ゼロ)であるため、ILトリマーが未使用コードをアグレッシブに削除できます。PoCのTrimTestApp検証(`TrimMode=full`, `ILLinkTreatWarningsAsErrors=true`)において、`Body`ゲッター・未到達ファクトリメソッドのMethodDef除去をメタデータレベルで確認済みです。リフレクションベースのバインディングを持つ同等ライブラリ比で、AOTコンパイル後のWasmペイロードを約20〜30%削減(予測値)と見込みます。素のRazor構成との比較ではほぼ同等です。
 
 ---
 
