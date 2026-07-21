@@ -28,4 +28,18 @@ public sealed class RenderingTests : BunitContext
 
         cut.MarkupMatches("<div><span>Always</span><button>Toggle</button></div>");
     }
+
+    [Fact]
+    public void PrivateStaticComposableHelperRendersAndEvaluatesArgumentsOncePerRender()
+    {
+        var cut = Render<ComposableCounterComponent>();
+
+        cut.MarkupMatches("<div><span>Count: 0</span><button>Increment</button></div>");
+        Assert.Equal(1, cut.Instance.ArgumentEvaluations);
+
+        cut.Find("button").Click();
+
+        cut.MarkupMatches("<div><span>Count: 1</span><button>Increment</button></div>");
+        Assert.Equal(2, cut.Instance.ArgumentEvaluations);
+    }
 }
