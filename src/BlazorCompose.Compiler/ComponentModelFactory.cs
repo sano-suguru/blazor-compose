@@ -24,6 +24,12 @@ internal static class ComponentModelFactory
         if (symbol is null)
             return null;
 
+        // Nested classes require wrapping the generated code inside the outer class hierarchy;
+        // that complexity is out of scope for this task.  Skip them so the generator does not
+        // emit a structurally incorrect top-level partial class.
+        if (symbol.ContainingType is not null)
+            return null;
+
         if (!InheritsFromComposeComponentBase(symbol))
             return null;
 
@@ -31,8 +37,14 @@ internal static class ComponentModelFactory
             ? ns.ToDisplayString()
             : null;
 
+        // Include namespace in the hint name to prevent collisions when two components share
+        // the same simple class name across different namespaces.
+        var hintName = namespaceName is not null
+            ? $"{namespaceName}.{symbol.Name}.g.cs"
+            : $"{symbol.Name}.g.cs";
+
         return new ComponentModel(
-            HintName: $"{symbol.Name}.g.cs",
+            HintName: hintName,
             ClassName: symbol.Name,
             Namespace: namespaceName);
     }
