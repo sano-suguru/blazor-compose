@@ -4,6 +4,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>BlazorCompose</PackageId>
+    <Version>0.1.0-dev</Version>
+    <IsPackable>true</IsPackable>
+    <IsTrimmable>true</IsTrimmable>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackCompilerAnalyzer</TargetsForTfmSpecificContentInPackage>
+    <CompilerPackStagingDirectory>$(MSBuildThisFileDirectory)obj/compiler-pack/analyzers/dotnet/cs</CompilerPackStagingDirectory>
+    <CompilerPackAssemblyPath>$(CompilerPackStagingDirectory)/BlazorCompose.Compiler.dll</CompilerPackAssemblyPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,5 +23,26 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../BlazorCompose.Compiler/BlazorCompose.Compiler.csproj"
+                      BuildReference="false"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <Target Name="PackCompilerAnalyzer">
+    <MSBuild Projects="../BlazorCompose.Compiler/BlazorCompose.Compiler.csproj"
+             Targets="Rebuild"
+             Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0;NoBuild=false" />
+    <MakeDir Directories="$(CompilerPackStagingDirectory)" />
+    <Copy SourceFiles="../BlazorCompose.Compiler/bin/$(Configuration)/netstandard2.0/BlazorCompose.Compiler.dll"
+          DestinationFiles="$(CompilerPackAssemblyPath)" />
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(CompilerPackAssemblyPath)">
+        <PackagePath>analyzers/dotnet/cs</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
 
 </Project>

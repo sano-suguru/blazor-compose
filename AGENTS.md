@@ -17,6 +17,9 @@ This repository now has its initial .NET foundation in place. `WHITEPAPER.md` an
 - Test all: `dotnet test BlazorCompose.slnx --no-build`
 - Test one project: `dotnet test tests/BlazorCompose.Compiler.Tests/BlazorCompose.Compiler.Tests.csproj --no-build`
 - Test one case: `dotnet test tests/BlazorCompose.Compiler.Tests/BlazorCompose.Compiler.Tests.csproj --no-build --filter FullyQualifiedName~GeneratorTests`
+- Pack: `dotnet pack src/BlazorCompose.Runtime/BlazorCompose.Runtime.csproj -c Release -o artifacts/package`
+- Verify package layout: `bash eng/verify-package.sh artifacts/package/BlazorCompose.0.1.0-dev.nupkg`
+- Test package contents: `dotnet test tests/BlazorCompose.TrimTests/BlazorCompose.TrimTests.csproj --filter FullyQualifiedName~PackageContentsTests`
 
 ## Architecture
 
