@@ -1,4 +1,5 @@
 using System.Globalization;
+using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 
 namespace BlazorCompose.Compiler.Tests;
@@ -41,11 +42,14 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NestedPartialComponentDoesNotGenerateSourceAndProducesCS0534()
+    public async Task NestedPartialComponentDoesNotGenerateSourceAndProducesCS0534()
     {
         var result = CompilationTestHost.RunGenerator(NestedPartialCounterSource);
 
         Assert.Empty(result.GeneratedSources);
+
+        var analyzerDiagnostics = await CompilationTestHost.RunAnalyzerAsync<PartialComponentAnalyzer>(NestedPartialCounterSource);
+        Assert.DoesNotContain(analyzerDiagnostics, static diagnostic => diagnostic.Id == "BC1001");
 
         var diagnostic = Assert.Single(
             result.OutputCompilation.GetDiagnostics().Where(static diagnostic => diagnostic.Id == "CS0534"));
