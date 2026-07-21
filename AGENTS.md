@@ -2,11 +2,21 @@
 
 ## Repository status and commands
 
-This repository is currently in the specification stage. `WHITEPAPER.md` and `YELLOWPAPER.md` are the authoritative sources; there is no committed solution, project, build, test, lint, or format configuration yet.
+This repository now has its initial .NET foundation in place. `WHITEPAPER.md` and `YELLOWPAPER.md` remain the authoritative product and technical specifications, and implementation changes must stay consistent with both papers where their decisions overlap.
 
-- Do not invent build, test, lint, format, or single-test commands. Discover and document them from committed project files when implementation is added.
-- Do not infer a source-tree layout that is not present in the repository.
-- Keep changes to either paper consistent with the other where product-level decisions and formal technical rules overlap.
+- `global.json` pins SDK `10.0.300` with `latestPatch` roll-forward.
+- `BlazorCompose.slnx` contains six in-solution projects: `BlazorCompose.Runtime`, `BlazorCompose.Compiler`, `BlazorCompose.Runtime.Tests`, `BlazorCompose.Compiler.Tests`, `BlazorCompose.IntegrationTests`, and `BlazorCompose.Samples.Counter`.
+- `tests/BlazorCompose.TrimTests` and `tests/BlazorCompose.TrimTestApp` exist in the repository but remain outside the solution until the local package-based trimming workflow is introduced.
+- Repository-wide build configuration lives in `Directory.Build.props`, `Directory.Packages.props`, and `.editorconfig`.
+- Do not invent additional build, test, lint, format, or single-test commands. Use the validated commands below unless committed tooling files add more.
+
+## Validated commands
+
+- Restore: `dotnet restore BlazorCompose.slnx`
+- Build: `dotnet build BlazorCompose.slnx --no-restore`
+- Test all: `dotnet test BlazorCompose.slnx --no-build`
+- Test one project: `dotnet test tests/BlazorCompose.Compiler.Tests/BlazorCompose.Compiler.Tests.csproj --no-build`
+- Test one case: `dotnet test tests/BlazorCompose.Compiler.Tests/BlazorCompose.Compiler.Tests.csproj --no-build --filter FullyQualifiedName~GeneratorTests`
 
 ## Architecture
 
