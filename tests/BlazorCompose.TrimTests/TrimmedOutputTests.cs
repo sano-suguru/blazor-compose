@@ -7,8 +7,8 @@ namespace BlazorCompose.TrimTests;
 /// Inspects the trimmed output of <c>BlazorCompose.TrimTestApp</c> using System.Reflection.Metadata
 /// to verify that the trimmer behaves according to the architecture's expectations:
 /// - Generated <c>RenderBody</c> must be retained (it is rooted by <c>BuildRenderTree</c>).
-/// - The abstract <c>Body</c> getter should be trimmed (no runtime caller).
-/// - Unreferenced inert factory methods in <c>BlazorCompose.UI</c> should be trimmed.
+/// - The <c>Body</c> getter should be trimmed from both derived and base types (no runtime caller).
+/// - All unreferenced inert factory methods in <c>BlazorCompose.UI</c> should be trimmed.
 /// </summary>
 public sealed class TrimmedOutputTests
 {
@@ -18,24 +18,24 @@ public sealed class TrimmedOutputTests
     [Fact]
     public void RenderBodyMethodIsRetainedInTrimmedAppAssembly()
     {
-        SkipIfOutputDirectoryNotSet();
+        EnsureOutputDirectoryExists();
 
         var appAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.TrimTestApp.dll");
         Assert.True(File.Exists(appAssemblyPath), $"App assembly not found at: {appAssemblyPath}");
 
-        var methods = GetMethodNames(appAssemblyPath, "TrimCounter");
+        var methods = GetMethodNames(appAssemblyPath, "TrimCounter", expectedNamespace: "");
         Assert.Contains("RenderBody", methods);
     }
 
     [Fact]
     public void BodyGetterIsAbsentFromTrimmedAppAssembly()
     {
-        SkipIfOutputDirectoryNotSet();
+        EnsureOutputDirectoryExists();
 
         var appAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.TrimTestApp.dll");
         Assert.True(File.Exists(appAssemblyPath), $"App assembly not found at: {appAssemblyPath}");
 
-        var methods = GetMethodNames(appAssemblyPath, "TrimCounter");
+        var methods = GetMethodNames(appAssemblyPath, "TrimCounter", expectedNamespace: "");
 
         // The Body getter should be trimmed since RenderBody (generated) doesn't call it
         // and no other code in the app invokes it.
@@ -43,40 +43,62 @@ public sealed class TrimmedOutputTests
     }
 
     [Fact]
-    public void UnreferencedFactoryMethodsAreAbsentFromTrimmedRuntimeAssembly()
+    public void BaseBodyGetterIsAbsentFromTrimmedRuntimeAssembly()
     {
-        SkipIfOutputDirectoryNotSet();
+        EnsureOutputDirectoryExists();
 
         var runtimeAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.Runtime.dll");
         Assert.True(File.Exists(runtimeAssemblyPath), $"Runtime assembly not found at: {runtimeAssemblyPath}");
 
-        var methods = GetMethodNames(runtimeAssemblyPath, "UI");
+        var methods = GetMethodNames(runtimeAssemblyPath, "ComposeComponentBase", expectedNamespace: "BlazorCompose");
 
-        // The If factory is not referenced by TrimCounter's Body expression or the generated
-        // RenderBody, so it should be removed by the trimmer.
+        // The abstract Body getter in the base class should also be trimmed — no runtime call path.
+        Assert.DoesNotContain("get_Body", methods);
+    }
+
+    [Fact]
+    public void AllInertFactoryMethodsAreAbsentFromTrimmedRuntimeAssembly()
+    {
+        EnsureOutputDirectoryExists();
+
+        var runtimeAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.Runtime.dll");
+        Assert.True(File.Exists(runtimeAssemblyPath), $"Runtime assembly not found at: {runtimeAssemblyPath}");
+
+        var methods = GetMethodNames(runtimeAssemblyPath, "UI", expectedNamespace: "BlazorCompose");
+
+        // All four initial inert factories are unreachable at runtime — the source generator
+        // inlines their semantics into RenderBody via direct RenderTreeBuilder calls.
+        Assert.DoesNotContain("Text", methods);
+        Assert.DoesNotContain("Button", methods);
+        Assert.DoesNotContain("VStack", methods);
         Assert.DoesNotContain("If", methods);
     }
 
     [Fact]
     public void ComposeComponentBaseRetainsBuildRenderTree()
     {
-        SkipIfOutputDirectoryNotSet();
+        EnsureOutputDirectoryExists();
 
         var runtimeAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.Runtime.dll");
         Assert.True(File.Exists(runtimeAssemblyPath), $"Runtime assembly not found at: {runtimeAssemblyPath}");
 
-        var methods = GetMethodNames(runtimeAssemblyPath, "ComposeComponentBase");
+        var methods = GetMethodNames(runtimeAssemblyPath, "ComposeComponentBase", expectedNamespace: "BlazorCompose");
 
         // BuildRenderTree is the root that keeps the rendering chain alive.
         Assert.Contains("BuildRenderTree", methods);
     }
 
     /// <summary>
-    /// Gets method definition names (metadata-level, not body-only) for a given type in the assembly.
-    /// This reads the type's MethodDef table entries, which are present even if bodies were emptied.
+    /// Gets method definition names (metadata-level) for a given type in the assembly.
+    /// Matches type by both namespace and short name to avoid ambiguity.
     /// A method removed by the trimmer will not have a MethodDef row at all.
     /// </summary>
-    private static HashSet<string> GetMethodNames(string assemblyPath, string typeName)
+    /// <param name="assemblyPath">Path to the PE assembly to inspect.</param>
+    /// <param name="typeName">Short type name to match.</param>
+    /// <param name="expectedNamespace">
+    /// Expected namespace for the type. Use empty string for global/anonymous namespace (top-level statements).
+    /// </param>
+    private static HashSet<string> GetMethodNames(string assemblyPath, string typeName, string expectedNamespace)
     {
         using var fileStream = File.OpenRead(assemblyPath);
         using var peReader = new PEReader(fileStream);
@@ -88,8 +110,10 @@ public sealed class TrimmedOutputTests
         {
             var typeDef = metadataReader.GetTypeDefinition(typeDefHandle);
             var name = metadataReader.GetString(typeDef.Name);
+            var ns = metadataReader.GetString(typeDef.Namespace);
 
-            if (!string.Equals(name, typeName, StringComparison.Ordinal))
+            if (!string.Equals(name, typeName, StringComparison.Ordinal) ||
+                !string.Equals(ns, expectedNamespace, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -105,15 +129,20 @@ public sealed class TrimmedOutputTests
         return result;
     }
 
-    private static void SkipIfOutputDirectoryNotSet()
+    /// <summary>
+    /// Asserts that the trim output directory is set and exists. This is an architecture gate —
+    /// missing output is a hard failure, not a skippable condition.
+    /// </summary>
+    private static void EnsureOutputDirectoryExists()
     {
-        if (string.IsNullOrEmpty(TrimOutputDirectory))
-        {
-            // In xunit v2, runtime skip is not natively supported.
-            // Fail explicitly so the caller knows the env var is required.
-            Assert.Fail(
-                "BLAZORCOMPOSE_TRIM_OUTPUT environment variable is not set. " +
-                "Publish the TrimTestApp first, then run tests with the variable pointing to the publish directory.");
-        }
+        Assert.False(
+            string.IsNullOrEmpty(TrimOutputDirectory),
+            "BLAZORCOMPOSE_TRIM_OUTPUT environment variable is not set. " +
+            "This is an architecture gate: publish the TrimTestApp first, then run tests " +
+            "with the variable pointing to the publish directory.");
+
+        Assert.True(
+            Directory.Exists(TrimOutputDirectory),
+            $"BLAZORCOMPOSE_TRIM_OUTPUT points to a directory that does not exist: {TrimOutputDirectory}");
     }
 }
