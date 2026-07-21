@@ -1,7 +1,8 @@
 namespace BlazorCompose.Compiler.Analysis;
 
 /// <summary>
-/// Classifies a <c>Body</c> sub-expression into the three compiler pipeline paths.
+/// Classifies a <c>Body</c> sub-expression into the three compiler pipeline paths and
+/// the execution contexts recognized for diagnostic purposes.
 /// </summary>
 internal enum ExecutionContextKind
 {
@@ -25,4 +26,11 @@ internal enum ExecutionContextKind
     /// <c>View</c>, isolates it in a region, and reports diagnostic BC2001.
     /// </summary>
     Opaque,
+
+    /// <summary>
+    /// Deferred event handler: the recognized second argument of a <c>UI.Button</c> call.
+    /// Code in this context executes after rendering (in response to a DOM event), so state
+    /// mutations are expected and must not be reported as BC3001.
+    /// </summary>
+    DeferredEventHandler,
 }

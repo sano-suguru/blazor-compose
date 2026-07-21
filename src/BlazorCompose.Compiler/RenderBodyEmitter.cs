@@ -54,6 +54,8 @@ internal static class RenderBodyEmitter
                 return EmitButton(sb, button, startSeq, indent);
             case VStackNode vstack:
                 return EmitVStack(sb, vstack, startSeq, indent);
+            case IfNode ifNode:
+                return EmitIf(sb, ifNode, startSeq, indent);
             default:
                 throw new NotSupportedException(
                     $"Emission for '{node.GetType().Name}' is not yet implemented.");
@@ -87,5 +89,34 @@ internal static class RenderBodyEmitter
             nextSeq = EmitNode(sb, child, nextSeq, indent);
         sb.AppendLine($"{indent}__builder.CloseElement();");
         return nextSeq;
+    }
+
+    private static int EmitIf(StringBuilder sb, IfNode node, int seq, string indent)
+    {
+        // seq is consumed by OpenRegion.
+        // then  branch occupies [seq+1, seq+1+W(then)).
+        // else  branch occupies [seq+1+W(then), seq+1+W(then)+W(else)).
+        // The total reservation equals SequenceAllocator.Width(node) so that sibling nodes
+        // always receive a sequence that is independent of which branch executes at runtime.
+        int thenStart = seq + 1;
+
+        sb.AppendLine($"{indent}__builder.OpenRegion({seq});");
+        sb.AppendLine($"{indent}if ({node.ConditionExpression})");
+        sb.AppendLine($"{indent}{{");
+        int afterThen = EmitNode(sb, node.Then, thenStart, indent + "    ");
+        sb.AppendLine($"{indent}}}");
+
+        if (node.Otherwise is not null)
+        {
+            // afterThen == seq+1+Width(then) which is exactly where the else range begins.
+            sb.AppendLine($"{indent}else");
+            sb.AppendLine($"{indent}{{");
+            EmitNode(sb, node.Otherwise, afterThen, indent + "    ");
+            sb.AppendLine($"{indent}}}");
+        }
+
+        sb.AppendLine($"{indent}__builder.CloseRegion();");
+
+        return seq + SequenceAllocator.Width(node);
     }
 }

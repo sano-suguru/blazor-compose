@@ -29,9 +29,11 @@ internal static class SequenceAllocator
         // OpenElement("div") = 1 call, plus the sum of all children
         VStackNode { Children: var children } => 1 + children.Sum(Width),
 
-        // IfNode allocation is implemented in Task 5.
-        IfNode => throw new NotSupportedException(
-            "IfNode width allocation is not yet implemented (Task 5)."),
+        // OpenRegion(k) = 1 call, then both branches (disjoint ranges: then=[k+1, k+1+W(T1)),
+        // else=[k+1+W(T1), k+1+W(T1)+W(T2))).  Both widths are reserved regardless of which
+        // branch executes so that the sequence of any following sibling is stable.
+        IfNode { Then: var then, Otherwise: var otherwise } =>
+            1 + Width(then) + (otherwise is null ? 0 : Width(otherwise)),
 
         _ => throw new NotSupportedException(
             $"Unknown RenderNode type '{node.GetType().Name}'; add a Width case for it."),

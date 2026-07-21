@@ -143,4 +143,83 @@ public sealed class GeneratorTests
         Assert.Single(result.OutputCompilation.GetDiagnostics()
             .Where(static d => d.Id == "CS0534"));
     }
+
+    // -----------------------------------------------------------------------
+    // If emission
+    // -----------------------------------------------------------------------
+
+    private const string IfCounterSource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        public partial class IfCounter : ComposeComponentBase
+        {
+            private bool _visible = true;
+
+            protected override View Body =>
+                VStack(
+                    If(_visible, () => Text("Yes"), () => Text("No")),
+                    Text("Always"));
+        }
+        """;
+
+    [Fact]
+    public void IfWithBothBranchesGeneratesDisjointSequenceRangesAndStableFollowingSequence()
+    {
+        var result = CompilationTestHost.RunGenerator(IfCounterSource);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // VStack outer element at 0
+        Assert.Contains("__builder.OpenElement(0, \"div\")", generated);
+
+        // If region boundary at 1 (one literal sequence for the conditional region)
+        Assert.Contains("__builder.OpenRegion(1)", generated);
+
+        // then branch: Text("Yes") uses [2, 3]
+        Assert.Contains("__builder.OpenElement(2, \"span\")", generated);
+        Assert.Contains("__builder.AddContent(3, \"Yes\")", generated);
+
+        // else branch: Text("No") uses [4, 5] — disjoint from then range [2, 3]
+        Assert.Contains("__builder.OpenElement(4, \"span\")", generated);
+        Assert.Contains("__builder.AddContent(5, \"No\")", generated);
+
+        // Region close (no sequence argument)
+        Assert.Contains("__builder.CloseRegion()", generated);
+
+        // Text("Always") starts at 6 — same sequence regardless of which branch ran
+        Assert.Contains("__builder.OpenElement(6, \"span\")", generated);
+        Assert.Contains("__builder.AddContent(7, \"Always\")", generated);
+
+        // All sequence numbers are compile-time literals; no runtime ++ variable
+        Assert.DoesNotContain("__seq", generated);
+        Assert.DoesNotContain("seqVar", generated);
+    }
+
+    private const string IfOnlyThenSource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        public partial class IfThen : ComposeComponentBase
+        {
+            private bool _show = true;
+
+            protected override View Body =>
+                If(_show, () => Text("Visible"), null);
+        }
+        """;
+
+    [Fact]
+    public void IfWithNullOtherwiseGeneratesThenBranchOnly()
+    {
+        var result = CompilationTestHost.RunGenerator(IfOnlyThenSource);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        Assert.Contains("__builder.OpenRegion(0)", generated);
+        Assert.Contains("__builder.OpenElement(1, \"span\")", generated);
+        Assert.Contains("__builder.AddContent(2, \"Visible\")", generated);
+        Assert.Contains("__builder.CloseRegion()", generated);
+
+        // No else branch
+        Assert.DoesNotContain("else", generated);
+    }
 }

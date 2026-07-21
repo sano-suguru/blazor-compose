@@ -38,7 +38,7 @@ r_t = γ(e)(s_t)      — 生成されたレンダリングメソッドの実行
 
 Razorとの対比で言えば、Razorコンパイラは `E` をマークアップとして受け取り、BlazorComposeは `E` をC#式として受け取る。`γ` の像である `S → R` が実行時の全てであり、実行時に `E` が評価されることはない。
 
-生成された写像 `γ(e)` は純粋関数であることを規約とする(単一方向データフロー、§4.1)。`Body` 内の状態変更は診断BC3001の対象となる。
+生成された写像 `γ(e)` は純粋関数であることを規約とする(単一方向データフロー、§4.1)。`Body` 内の状態変更は診断BC3001の対象となる。BC3001の初期検出範囲はコンポーネントのインスタンスメンバーへの静的識別可能な直接書き込み(フィールド代入、プロパティ代入、インクリメント/デクリメント演算子)に限る。`Button` のonClickラムダ(`DeferredEventHandler`として分類)内の変更はレンダリング後に実行されるため除外される。任意のメソッド呼び出し経由の副作用(非同期連鎖等)の完全な検出は初期スライスでは保証しない。
 
 ### 1.2 レンダリングツリーの等価性と差分検知 (Reconciliation Equivalence)
 
@@ -86,7 +86,7 @@ ComposeComponentBase                 ② SSC分類(§2.3)
 
 ### 2.2 シーケンス割当
 
-`Body` の式ツリー `e` を深さ優先(preorder)で走査し、各UIノードに互いに素なシーケンス区間を予約する。
+`Body` の式ツリー `e` を深さ優先(preorder)で走査し、各UIノードに互いに素なシーケンス区間を予約する。`counter` はソースコード上の絶対オフセットではなく、構文ツリーの論理的な preorder 走査順で割り振られる整数(preorder 序数)である。これにより、コメントや空白の変更がシーケンス番号の安定性に影響しないことが保証される。
 
 ```
 procedure Compile(e: ExpressionTree, model: SemanticModel) → RenderBody:
@@ -110,7 +110,7 @@ procedure Compile(e: ExpressionTree, model: SemanticModel) → RenderBody:
     return code
 ```
 
-`FrameWidth` はノード種別ごとに静的に定まる(例: `Text` = 3、属性1個付き `Button` = 5)。装飾チェーンは親要素のクラス属性へ静的に合成されるため、装飾の追加はフレーム数を増やさない(`.Padding(24).Bold()` は単一の `AddAttribute` に畳み込まれる)。動的引数(補間文字列、状態参照、イベントラムダ)は評価されず構文として `EmitFrames` の出力へ移植される。同一partialクラス内に生成されるため、`this` 経由のprivateアクセスは保存される。
+`FrameWidth` はシーケンス引数を消費する `RenderTreeBuilder` 呼び出し数のみをカウントし、`CloseElement`・`CloseRegion` のようにシーケンス引数を持たない呼び出しは含まない。ノード種別ごとに静的に定まる(例: `Text` = 2 [`OpenElement` + `AddContent`]、onclick属性1個付き `Button` = 3 [`OpenElement` + `AddAttribute` + `AddContent`])。装飾チェーンは親要素のクラス属性へ静的に合成されるため、装飾の追加はフレーム数を増やさない(`.Padding(24).Bold()` は単一の `AddAttribute` に畳み込まれる)。動的引数(補間文字列、状態参照、イベントラムダ)は評価されず構文として `EmitFrames` の出力へ移植される。同一partialクラス内に生成されるため、`this` 経由のprivateアクセスは保存される。
 
 ### 2.3 静的シーケンス可能サブセット SSC (Statically Sequenceable Constructs)
 
@@ -230,7 +230,7 @@ d : Blazor SynchronizationContext へのディスパッチ完了
 e ≺ d ≺ σ ≺ ρ ≺ δ                                … (3)
 ```
 
-`σ ≺ ρ` は単一方向データフローの強制を意味する: `RenderBody` の実行中に `σ` を発生させてはならない。ソースレベルでは「`Body` / `[Composable]` 内での状態変更禁止」に対応し、違反は診断BC3001となる。
+`σ ≺ ρ` は単一方向データフローの強制を意味する: `RenderBody` の実行中に `σ` を発生させてはならない。ソースレベルでは「`Body` / `[Composable]` 内での状態変更禁止」に対応し、違反は診断BC3001となる。`Button` のonClickラムダ(`DeferredEventHandler`コンテキスト)はレンダリングではなくイベント後に実行されるため除外される。任意のメソッド呼び出し経由の副作用の完全な検出は保証しない(§1.1 BC3001注記参照)。
 
 ### 4.2 Blazor標準ディスパッチとの役割分担
 
@@ -317,7 +317,7 @@ public closed union ViewNode
 | ------ | ------- | ------------------------------------------------------------------------------------- |
 | BC1001 | Error   | コンポーネントクラスが `partial` として宣言されていない(`RenderBody` を生成できない)  |
 | BC2001 | Info    | Opaque構文を検出。動的リージョンへ縮退し、当該領域の静的差分最適化が失われる          |
-| BC3001 | Error   | `Body` / `[Composable]` 本体内での状態変更(単一方向データフロー違反)                  |
+| BC3001 | Error   | `Body` / `[Composable]` 本体内での状態変更(単一方向データフロー違反)。初期検出範囲: コンポーネントインスタンスメンバーへの直接書き込み。`Button` onClickラムダ(遅延イベントハンドラ)は除外。任意の副作用の完全検出は保証しない |
 | BC3002 | Warning | `ForEach` の `key` セレクタが要素の恒等性を保証しない可能性(インデックスベースキー等) |
 
 ## 付録B: 検討した代替アーキテクチャと不採用理由

@@ -147,9 +147,59 @@ internal static class ComponentModelFactory
             return new VStackNode(children.ToImmutableArray());
         }
 
-        // IfNode recognition without allocation/emission (Task 5 owns those).
-        // Return null so the generator emits an empty RenderBody rather than incorrect code.
+        if (SymbolEqualityComparer.Default.Equals(method, symbols.IfMethod))
+        {
+            // If(bool condition, Func<View> then, Func<View>? otherwise)
+            var condArg = invocation.ArgumentList.Arguments[0].Expression;
+            var thenArg = invocation.ArgumentList.Arguments[1].Expression;
+
+            var thenExpr = ExtractLambdaBody(thenArg);
+            if (thenExpr is null)
+                return null;
+
+            var thenNode = TryAnalyzeExpression(thenExpr, semanticModel, symbols, ct);
+            if (thenNode is null)
+                return null;
+
+            RenderNode? otherwiseNode = null;
+            if (invocation.ArgumentList.Arguments.Count >= 3)
+            {
+                var otherwiseArg = invocation.ArgumentList.Arguments[2].Expression;
+                // A literal null argument means "no else branch".
+                if (otherwiseArg is not LiteralExpressionSyntax { Token: { RawKind: (int)SyntaxKind.NullKeyword } })
+                {
+                    var otherwiseExpr = ExtractLambdaBody(otherwiseArg);
+                    if (otherwiseExpr is null)
+                        return null;
+
+                    otherwiseNode = TryAnalyzeExpression(otherwiseExpr, semanticModel, symbols, ct);
+                    if (otherwiseNode is null)
+                        return null;
+                }
+            }
+
+            return new IfNode(
+                ConditionExpression: condArg.ToString(),
+                Then: thenNode,
+                Otherwise: otherwiseNode);
+        }
+
+        // Expressions that cannot be statically analyzed fall through here.
+        // When the Opaque/BC2001 path is implemented, this will emit a runtime-evaluated
+        // RenderFragment region and report BC2001.  Until then, returning null causes CS0534
+        // in the user's compilation, which is the correct failure signal.
 
         return null;
     }
+
+    /// <summary>
+    /// Extracts the expression from a zero-parameter or parameterless lambda expression body,
+    /// or returns <see langword="null"/> when the shape is not a simple expression lambda.
+    /// </summary>
+    private static ExpressionSyntax? ExtractLambdaBody(ExpressionSyntax expr) => expr switch
+    {
+        ParenthesizedLambdaExpressionSyntax { Body: ExpressionSyntax body } => body,
+        SimpleLambdaExpressionSyntax { Body: ExpressionSyntax body } => body,
+        _ => null,
+    };
 }
