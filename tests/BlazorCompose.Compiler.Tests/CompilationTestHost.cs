@@ -77,7 +77,7 @@ public static class CompilationTestHost
     // Helpers
     // ---------------------------------------------------------------------------
 
-    private static CSharpCompilation CreateCompilation(string source)
+    internal static CSharpCompilation CreateCompilation(string source)
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(
             source,
