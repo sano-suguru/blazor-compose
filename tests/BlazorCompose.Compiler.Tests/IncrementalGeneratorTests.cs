@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Linq;
+using BlazorCompose.Compiler.Analysis;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -105,11 +106,11 @@ public sealed class IncrementalGeneratorTests
         var allOutputs = modelingSteps.SelectMany(s => s.Outputs).ToImmutableArray();
         Assert.Equal(2, allOutputs.Length);
 
-        // Identify each output by its ComponentModel value
+        // Identify each output by its ComponentModelResult's model value
         var componentA = allOutputs.SingleOrDefault(o =>
-            o.Value is ComponentModel m && m.ClassName == "ComponentA");
+            o.Value is ComponentModelResult result && result.Model is { } model && model.ClassName == "ComponentA");
         var componentB = allOutputs.SingleOrDefault(o =>
-            o.Value is ComponentModel m && m.ClassName == "ComponentB");
+            o.Value is ComponentModelResult result && result.Model is { } model && model.ClassName == "ComponentB");
 
         Assert.True(componentA.Value is not null,
             "Expected ComponentA model in tracked outputs");
@@ -279,15 +280,16 @@ public sealed class IncrementalGeneratorTests
                 output.Reason is IncrementalStepRunReason.Modified or IncrementalStepRunReason.New,
                 $"Expected KnownSymbols Modified/New but got {output.Reason}"));
 
-        // The component model must NOT be generated in Run 2 because Text(string) no longer
-        // matches (it now requires 2 params). If ComponentModeling still has outputs, they
-        // must all be Modified/New (recomputed), not Cached/Unchanged.
+        // The component model must NOT be reused (Cached) in Run 2 because Text(string) no longer
+        // matches (it now requires 2 params).  Stable non-component candidates (for example the
+        // in-source ComposeComponentBase declaration) may recompute to an equal model-less result and
+        // report Unchanged; the regression this guards against is a stale Cached reuse of the old model.
         if (trackedSteps.TryGetValue("ComponentModeling", out var modelingSteps))
         {
             var modelOutputs = modelingSteps.SelectMany(s => s.Outputs).ToImmutableArray();
             Assert.All(modelOutputs, output =>
                 Assert.True(
-                    output.Reason is not (IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged),
+                    output.Reason is not IncrementalStepRunReason.Cached,
                     $"ComponentModel was incorrectly cached after UI API signature change (reason: {output.Reason})"));
         }
 
@@ -297,8 +299,207 @@ public sealed class IncrementalGeneratorTests
     }
 
     // ---------------------------------------------------------------------------
+    // Cross-file composable invalidation and registry stability
+    // ---------------------------------------------------------------------------
+
+    private const string WidgetsSource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        namespace TestNs;
+
+        public static class Widgets
+        {
+            [Composable]
+            public static View Label(string value) => Text(value);
+        }
+        """;
+
+    private const string WidgetsModifiedSource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        namespace TestNs;
+
+        public static class Widgets
+        {
+            [Composable]
+            public static View Label(string value) => Text(value + "!");
+        }
+        """;
+
+    private const string CallerSource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        namespace TestNs;
+
+        public partial class Caller : ComposeComponentBase
+        {
+            protected override View Body => Widgets.Label("x");
+        }
+        """;
+
+    private const string UnrelatedSource = """
+        using BlazorCompose;
+        using static BlazorCompose.UI;
+
+        namespace TestNs;
+
+        public partial class Unrelated : ComposeComponentBase
+        {
+            protected override View Body => Text("z");
+        }
+        """;
+
+    /// <summary>
+    /// Changing a composable definition file must recompute the caller that expands it (Modified) while
+    /// the unrelated component that never calls it recomputes to an equal model (Unchanged/Cached).
+    /// </summary>
+    [Fact]
+    public void ChangingComposableDefinitionInvalidatesOnlyDependentCaller()
+    {
+        var widgetsTree = ParseTree(WidgetsSource, "Widgets.cs");
+        var callerTree = ParseTree(CallerSource, "Caller.cs");
+        var unrelatedTree = ParseTree(UnrelatedSource, "Unrelated.cs");
+
+        var compilation = CreateCompilation(widgetsTree, callerTree, unrelatedTree);
+        GeneratorDriver driver = CreateDriver();
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+
+        var widgetsModified = ParseTree(WidgetsModifiedSource, "Widgets.cs");
+        var compilation2 = compilation.ReplaceSyntaxTree(widgetsTree, widgetsModified);
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation2, out _, out _);
+        var run2 = driver.GetRunResult();
+
+        var outputs = run2.Results[0].TrackedSteps["ComponentModeling"]
+            .SelectMany(s => s.Outputs).ToImmutableArray();
+
+        var callerOutput = outputs.Single(o =>
+            o.Value is ComponentModelResult result && result.Model is { } model && model.ClassName == "Caller");
+        var unrelatedOutput = outputs.Single(o =>
+            o.Value is ComponentModelResult result && result.Model is { } model && model.ClassName == "Unrelated");
+
+        Assert.Equal(IncrementalStepRunReason.Modified, callerOutput.Reason);
+        Assert.True(
+            unrelatedOutput.Reason is IncrementalStepRunReason.Unchanged or IncrementalStepRunReason.Cached,
+            $"Expected Unrelated to be Unchanged/Cached but got {unrelatedOutput.Reason}");
+    }
+
+    /// <summary>
+    /// An identical rerun with the same compilation must reuse the composable registry (Cached/Unchanged)
+    /// rather than rebuilding a distinct-but-equal value.
+    /// </summary>
+    [Fact]
+    public void ComposableRegistryIsCachedOnIdenticalRerun()
+    {
+        var widgetsTree = ParseTree(WidgetsSource, "Widgets.cs");
+        var callerTree = ParseTree(CallerSource, "Caller.cs");
+
+        var compilation = CreateCompilation(widgetsTree, callerTree);
+        GeneratorDriver driver = CreateDriver();
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        var run2 = driver.GetRunResult();
+
+        var registryOutputs = run2.Results[0].TrackedSteps["ComposableRegistry"]
+            .SelectMany(s => s.Outputs).ToImmutableArray();
+
+        Assert.All(registryOutputs, output =>
+            Assert.True(
+                output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged,
+                $"Expected ComposableRegistry Cached/Unchanged but got {output.Reason}"));
+    }
+
+    /// <summary>
+    /// Reordering syntax trees without changing any composable definition must yield an equal registry,
+    /// proving equality is by sorted value rather than discovery order or ImmutableArray reference.
+    /// </summary>
+    [Fact]
+    public void ReorderingSyntaxTreesProducesEqualRegistry()
+    {
+        var registryForward = ExtractRegistry(
+            ParseTree(WidgetsSource, "Widgets.cs"),
+            ParseTree(CallerSource, "Caller.cs"));
+
+        var registryReversed = ExtractRegistry(
+            ParseTree(CallerSource, "Caller.cs"),
+            ParseTree(WidgetsSource, "Widgets.cs"));
+
+        Assert.Equal(registryForward, registryReversed);
+    }
+
+    /// <summary>
+    /// The diagnostic-only branch must also participate in caching: an identical rerun of a component
+    /// that produces a BC1002 must report the modeling output as Cached/Unchanged, not Modified merely
+    /// because a fresh diagnostic value was allocated.
+    /// </summary>
+    [Fact]
+    public void DiagnosticOnlyModelResultIsCachedOnIdenticalRerun()
+    {
+        const string cyclicSource = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            namespace TestNs;
+
+            public partial class Cyclic : ComposeComponentBase
+            {
+                [Composable]
+                private static View Loop() => Loop();
+
+                protected override View Body => Loop();
+            }
+            """;
+
+        var tree = ParseTree(cyclicSource, "Cyclic.cs");
+        var compilation = CreateCompilation(tree);
+        GeneratorDriver driver = CreateDriver();
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        var run2 = driver.GetRunResult();
+
+        var outputs = run2.Results[0].TrackedSteps["ComponentModeling"]
+            .SelectMany(s => s.Outputs).ToImmutableArray();
+
+        var cyclic = outputs.Single(o =>
+            o.Value is ComponentModelResult result && !result.Diagnostics.IsDefaultOrEmpty);
+
+        Assert.True(
+            cyclic.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged,
+            $"Expected diagnostic-only result Cached/Unchanged but got {cyclic.Reason}");
+    }
+
+    // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
+
+    private static SyntaxTree ParseTree(string source, string path) =>
+        CSharpSyntaxTree.ParseText(
+            source,
+            CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14),
+            path: path);
+
+    private static CSharpGeneratorDriver CreateDriver() =>
+        (CSharpGeneratorDriver)CSharpGeneratorDriver.Create(
+            generators: [new BlazorComposeGenerator().AsSourceGenerator()],
+            driverOptions: new GeneratorDriverOptions(
+                disabledOutputs: default,
+                trackIncrementalGeneratorSteps: true));
+
+    private static ComposableRegistry ExtractRegistry(params SyntaxTree[] trees)
+    {
+        var compilation = CreateCompilation(trees);
+        var driver = CreateDriver().RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        var output = driver.GetRunResult().Results[0].TrackedSteps["ComposableRegistry"]
+            .SelectMany(s => s.Outputs)
+            .Single();
+        return (ComposableRegistry)output.Value!;
+    }
 
     private static CSharpCompilation CreateCompilation(params SyntaxTree[] trees)
     {

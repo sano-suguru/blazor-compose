@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Immutable;
+using System.Text;
 using BlazorCompose.Compiler.Analysis;
 using BlazorCompose.Compiler.Diagnostics;
 
@@ -27,7 +28,7 @@ internal static class ComposableExpander
     internal static ExpansionResult Expand(
         RenderTemplateNode root,
         ComposableRegistry registry,
-        string generatedContainingTypeKey)
+        ImmutableArray<string> generatedTypeInheritanceKeys)
     {
         var diagnostics = ImmutableArray.CreateBuilder<DiagnosticInfo>();
         var nextLogicalPreorderOrdinal = 0;
@@ -38,7 +39,7 @@ internal static class ComposableExpander
             ref nextLogicalPreorderOrdinal,
             ImmutableArray<string>.Empty,
             registry,
-            generatedContainingTypeKey,
+            generatedTypeInheritanceKeys,
             diagnostics);
 
         return new ExpansionResult(node, diagnostics.ToImmutable());
@@ -58,7 +59,7 @@ internal static class ComposableExpander
         ref int nextLogicalPreorderOrdinal,
         ImmutableArray<string> activeMethodStack,
         ComposableRegistry registry,
-        string generatedContainingTypeKey,
+        ImmutableArray<string> generatedTypeInheritanceKeys,
         ImmutableArray<DiagnosticInfo>.Builder diagnostics)
     {
         // Every node consumes one logical preorder ordinal, assigned before its subtree is visited.
@@ -85,7 +86,7 @@ internal static class ComposableExpander
                         ref nextLogicalPreorderOrdinal,
                         activeMethodStack,
                         registry,
-                        generatedContainingTypeKey,
+                        generatedTypeInheritanceKeys,
                         diagnostics);
                     if (expanded is null)
                         return null;
@@ -103,7 +104,7 @@ internal static class ComposableExpander
                     ref nextLogicalPreorderOrdinal,
                     activeMethodStack,
                     registry,
-                    generatedContainingTypeKey,
+                    generatedTypeInheritanceKeys,
                     diagnostics);
                 if (thenNode is null)
                     return null;
@@ -117,7 +118,7 @@ internal static class ComposableExpander
                         ref nextLogicalPreorderOrdinal,
                         activeMethodStack,
                         registry,
-                        generatedContainingTypeKey,
+                        generatedTypeInheritanceKeys,
                         diagnostics);
                     if (otherwiseNode is null)
                         return null;
@@ -134,7 +135,7 @@ internal static class ComposableExpander
                     ref nextLogicalPreorderOrdinal,
                     activeMethodStack,
                     registry,
-                    generatedContainingTypeKey,
+                    generatedTypeInheritanceKeys,
                     diagnostics);
 
             default:
@@ -149,7 +150,7 @@ internal static class ComposableExpander
         ref int nextLogicalPreorderOrdinal,
         ImmutableArray<string> activeMethodStack,
         ComposableRegistry registry,
-        string generatedContainingTypeKey,
+        ImmutableArray<string> generatedTypeInheritanceKeys,
         ImmutableArray<DiagnosticInfo>.Builder diagnostics)
     {
         var methodKey = call.MethodKey;
@@ -170,7 +171,7 @@ internal static class ComposableExpander
             {
                 diagnostics.Add(CreateDiagnostic(
                     call,
-                    "recursive composable expansion forms a cycle"));
+                    $"recursive composable expansion forms a cycle: {BuildCycleChain(activeMethodStack, call.DisplayName, registry)}"));
                 return null;
             }
         }
@@ -186,7 +187,7 @@ internal static class ComposableExpander
 
         foreach (var requirement in definition.AccessRequirements)
         {
-            if (!SatisfiesAccess(requirement, definition.ContainingTypeKey, generatedContainingTypeKey))
+            if (!SatisfiesAccess(requirement, definition.ContainingTypeKey, generatedTypeInheritanceKeys))
             {
                 diagnostics.Add(CreateDiagnostic(
                     call,
@@ -226,7 +227,7 @@ internal static class ComposableExpander
             ref nextLogicalPreorderOrdinal,
             activeMethodStack.Add(methodKey),
             registry,
-            generatedContainingTypeKey,
+            generatedTypeInheritanceKeys,
             diagnostics);
         if (body is null)
             return null;
@@ -236,15 +237,65 @@ internal static class ComposableExpander
 
     /// <summary>
     /// Determines whether an inlined body may legally name the referenced non-public member from the
-    /// generated component type.  Without Roslyn symbols the expander can only compare containing-type
-    /// keys, which is exact for private (<see cref="ComposableAccessRequirementKind.SameContainingType"/>)
-    /// members and conservative for protected members.
+    /// generated component type.  Because the value model is symbol-free, access is decided by comparing
+    /// normalized type keys: a <see cref="ComposableAccessRequirementKind.SameContainingType"/> (private)
+    /// member is legal only when the generated component *is* the declaring type, while a
+    /// <see cref="ComposableAccessRequirementKind.DerivedContainingType"/> (protected/private-protected)
+    /// member is legal when the declaring type appears anywhere in the generated component's inheritance
+    /// chain (the component itself or any base type).
     /// </summary>
     private static bool SatisfiesAccess(
         ComposableAccessRequirement requirement,
         string definitionContainingTypeKey,
-        string generatedContainingTypeKey) =>
-        string.Equals(definitionContainingTypeKey, generatedContainingTypeKey, StringComparison.Ordinal);
+        ImmutableArray<string> generatedTypeInheritanceKeys)
+    {
+        if (generatedTypeInheritanceKeys.IsDefaultOrEmpty)
+            return false;
+
+        return requirement.Kind switch
+        {
+            ComposableAccessRequirementKind.SameContainingType =>
+                string.Equals(
+                    definitionContainingTypeKey,
+                    generatedTypeInheritanceKeys[0],
+                    StringComparison.Ordinal),
+            ComposableAccessRequirementKind.DerivedContainingType =>
+                InheritanceChainContains(generatedTypeInheritanceKeys, definitionContainingTypeKey),
+            _ => false,
+        };
+    }
+
+    private static bool InheritanceChainContains(ImmutableArray<string> inheritanceKeys, string typeKey)
+    {
+        foreach (var key in inheritanceKeys)
+        {
+            if (string.Equals(key, typeKey, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Renders the active expansion stack plus the closing call into a readable <c>A -&gt; B -&gt; A</c>
+    /// chain so a cycle diagnostic names every composable involved.  Display names are resolved from the
+    /// registry so the chain reads in source terms rather than mangled method keys.
+    /// </summary>
+    private static string BuildCycleChain(
+        ImmutableArray<string> activeMethodStack,
+        string closingDisplayName,
+        ComposableRegistry registry)
+    {
+        var builder = new StringBuilder();
+        foreach (var methodKey in activeMethodStack)
+        {
+            var display = registry.TryGet(methodKey, out var entry) ? entry.DisplayName : methodKey;
+            builder.Append(display).Append(" -> ");
+        }
+
+        builder.Append(closingDisplayName);
+        return builder.ToString();
+    }
 
     private static string CreateLocalName(int callPreorderOrdinal, int parameterOrdinal) =>
         $"__bc_arg_{callPreorderOrdinal}_{parameterOrdinal}";

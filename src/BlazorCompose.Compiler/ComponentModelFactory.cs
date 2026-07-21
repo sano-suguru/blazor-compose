@@ -72,8 +72,11 @@ internal static class ComponentModelFactory
         if (template is null)
             return ComponentModelResult.None;
 
-        var containingTypeKey = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        var expansion = ComposableExpander.Expand(template, registry, containingTypeKey);
+        // Pass the generated component's inheritance chain (self first, then base types) so the expander
+        // can validate DerivedContainingType access requirements against real inheritance rather than a
+        // single containing-type key, while keeping the value model symbol-free.
+        var inheritanceKeys = BuildInheritanceKeys(symbol);
+        var expansion = ComposableExpander.Expand(template, registry, inheritanceKeys);
 
         // Call-site expansion failures surface as BC1002; do not also emit a partial RenderBody.
         if (!expansion.Diagnostics.IsDefaultOrEmpty)
@@ -99,6 +102,20 @@ internal static class ComponentModelFactory
             RootNode: expansion.Node);
 
         return new ComponentModelResult(model, ImmutableArray<DiagnosticInfo>.Empty);
+    }
+
+    /// <summary>
+    /// Returns the generated component's inheritance chain as fully qualified type keys, most-derived
+    /// first (the component itself), then each base type up the hierarchy.  This is the symbol-free datum
+    /// the expander uses to validate protected/private-protected access requirements.
+    /// </summary>
+    private static ImmutableArray<string> BuildInheritanceKeys(INamedTypeSymbol symbol)
+    {
+        var builder = ImmutableArray.CreateBuilder<string>();
+        for (INamedTypeSymbol? current = symbol; current is not null; current = current.BaseType)
+            builder.Add(current.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+
+        return builder.ToImmutable();
     }
 
     /// <summary>

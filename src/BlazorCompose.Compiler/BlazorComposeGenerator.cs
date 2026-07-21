@@ -60,6 +60,9 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
             .WithTrackingName("ComposableRegistry");
 
         // Model each candidate component against the registry so composable calls expand statically.
+        // The tracking name observes the value-equal ComponentModelResult stream so incremental caching
+        // tests can identify each component (or diagnostic-only result) by value, and so an unchanged
+        // rerun is Cached/Unchanged even on the diagnostic branch.
         var modelResults = syntaxCandidates
             .Combine(knownSymbols)
             .Combine(registry)
@@ -68,7 +71,8 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
                     input.Left.Left,
                     input.Left.Right,
                     input.Right,
-                    cancellationToken));
+                    cancellationToken))
+            .WithTrackingName("ComponentModeling");
 
         // Report model (call-site expansion) diagnostics separately, reconstructing Roslyn diagnostics
         // only inside the output callback.
@@ -80,12 +84,10 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
                     productionContext.ReportDiagnostic(diagnostic.ToDiagnostic(DiagnosticDescriptors.BC1002));
             });
 
-        // Add source only when a final model exists; the tracking name observes the non-null models so
-        // incremental caching tests can identify each component by value.
+        // Add source only when a final model exists.
         var components = modelResults
             .Select(static (result, _) => result.Model)
-            .Where(static model => model is not null)
-            .WithTrackingName("ComponentModeling");
+            .Where(static model => model is not null);
 
         context.RegisterSourceOutput(
             components,
