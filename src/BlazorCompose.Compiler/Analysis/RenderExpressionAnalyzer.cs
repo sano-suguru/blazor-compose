@@ -100,7 +100,11 @@ internal static class RenderExpressionAnalyzer
             if (arguments is null)
                 return null;
 
-            return new ComposableCallTemplateNode(MethodKey.Create(method), arguments.Value);
+            return new ComposableCallTemplateNode(
+                MethodKey.Create(method),
+                method.Name,
+                arguments.Value,
+                TemplateLocation.From(invocation.GetLocation()));
         }
 
         return null;

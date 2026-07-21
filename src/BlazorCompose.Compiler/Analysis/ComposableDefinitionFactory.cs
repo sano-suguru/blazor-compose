@@ -116,10 +116,14 @@ internal static class ComposableDefinitionFactory
         var body = RenderExpressionAnalyzer.Analyze(declaration.ExpressionBody!.Expression, context);
         if (body is null)
         {
-            diagnostics = ImmutableArray.Create(BuildDiagnostic(
-                declaration,
-                method.Name,
-                "body must be a statically sequenceable expression"));
+            // Prefer a specific recorded unsupported-reference diagnostic (for example a referenced local
+            // that cannot exist in generated code) over the generic non-SSC message.
+            diagnostics = context.Diagnostics.Count > 0
+                ? context.Diagnostics.ToImmutable()
+                : ImmutableArray.Create(BuildDiagnostic(
+                    declaration,
+                    method.Name,
+                    "body must be a statically sequenceable expression"));
             return null;
         }
 

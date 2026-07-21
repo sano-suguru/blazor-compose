@@ -27,18 +27,6 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
                 static (ctx, _) => ctx)
             .WithTrackingName("CandidateDiscovery");
 
-        var components = syntaxCandidates
-            .Combine(knownSymbols)
-            .Select(static (pair, cancellationToken) =>
-                ComponentModelFactory.TryCreate(pair.Left, pair.Right, cancellationToken))
-            .Where(static model => model is not null)
-            .WithTrackingName("ComponentModeling");
-
-        context.RegisterSourceOutput(
-            components,
-            static (productionContext, model) =>
-                productionContext.AddSource(model!.HintName, RenderBodyEmitter.Emit(model)));
-
         // Discover [Composable] definitions.  Definition-side SSC analysis resolves KnownSymbols
         // transiently from the definition's compilation so the transform output stays value-equal and
         // free of Roslyn symbols.
@@ -64,16 +52,44 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
             });
 
         // Collect every source composable entry — including invalid declarations — into a
-        // deterministic value-equal registry for the expansion pass introduced in a later task.
+        // deterministic value-equal registry consumed by call-site expansion.
         var registry = discoveryResults
             .Select(static (result, _) => result.Entry)
             .Collect()
             .Select(static (entries, _) => ComposableRegistry.Create(entries))
             .WithTrackingName("ComposableRegistry");
 
-        // The registry is not yet consumed by expansion.  Register a no-op output so the provider
-        // participates in the pipeline (keeping tracking-name coverage and value-equal caching alive)
-        // without emitting sources; expansion will consume it in a later task.
-        context.RegisterSourceOutput(registry, static (_, _) => { });
+        // Model each candidate component against the registry so composable calls expand statically.
+        var modelResults = syntaxCandidates
+            .Combine(knownSymbols)
+            .Combine(registry)
+            .Select(static (input, cancellationToken) =>
+                ComponentModelFactory.TryCreate(
+                    input.Left.Left,
+                    input.Left.Right,
+                    input.Right,
+                    cancellationToken));
+
+        // Report model (call-site expansion) diagnostics separately, reconstructing Roslyn diagnostics
+        // only inside the output callback.
+        context.RegisterSourceOutput(
+            modelResults,
+            static (productionContext, result) =>
+            {
+                foreach (var diagnostic in result.Diagnostics)
+                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic(DiagnosticDescriptors.BC1002));
+            });
+
+        // Add source only when a final model exists; the tracking name observes the non-null models so
+        // incremental caching tests can identify each component by value.
+        var components = modelResults
+            .Select(static (result, _) => result.Model)
+            .Where(static model => model is not null)
+            .WithTrackingName("ComponentModeling");
+
+        context.RegisterSourceOutput(
+            components,
+            static (productionContext, model) =>
+                productionContext.AddSource(model!.HintName, RenderBodyEmitter.Emit(model)));
     }
 }

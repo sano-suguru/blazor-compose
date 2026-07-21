@@ -1,7 +1,28 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 
 namespace BlazorCompose.Compiler;
+
+/// <summary>
+/// Symbol-free, value-equal capture of a source location for a template node.  Stores only the
+/// primitive coordinates required to reconstruct a <see cref="Location"/> at diagnostic-report time,
+/// following the same discipline as <see cref="Diagnostics.DiagnosticInfo"/>.
+/// </summary>
+internal readonly record struct TemplateLocation(
+    string FilePath,
+    TextSpan Span,
+    LinePositionSpan LineSpan)
+{
+    public static TemplateLocation From(Location location)
+    {
+        var lineSpan = location.GetLineSpan();
+        return new TemplateLocation(lineSpan.Path ?? string.Empty, location.SourceSpan, lineSpan.Span);
+    }
+
+    public Location ToLocation() => Location.Create(FilePath, Span, LineSpan);
+}
 
 internal sealed record ComposableInvocationArgument(
     int ParameterOrdinal,
@@ -60,16 +81,22 @@ internal sealed record IfTemplateNode(
 
 internal sealed record ComposableCallTemplateNode(
     string MethodKey,
-    ImmutableArray<ComposableInvocationArgument> Arguments) : RenderTemplateNode
+    string DisplayName,
+    ImmutableArray<ComposableInvocationArgument> Arguments,
+    TemplateLocation Location) : RenderTemplateNode
 {
     public bool Equals(ComposableCallTemplateNode? other) =>
         other is not null
         && MethodKey == other.MethodKey
+        && DisplayName == other.DisplayName
+        && Location.Equals(other.Location)
         && StructuralEquals(Arguments, other.Arguments);
 
     public override int GetHashCode()
     {
         var hash = unchecked(17 * 31 + MethodKey.GetHashCode());
+        hash = unchecked(hash * 31 + DisplayName.GetHashCode());
+        hash = unchecked(hash * 31 + Location.GetHashCode());
         foreach (var argument in Arguments)
             hash = unchecked(hash * 31 + (argument?.GetHashCode() ?? 0));
         return hash;
