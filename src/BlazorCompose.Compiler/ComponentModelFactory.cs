@@ -120,7 +120,7 @@ internal static class ComponentModelFactory
         {
             // Text(string content)
             var contentArg = invocation.ArgumentList.Arguments[0].Expression;
-            return new TextNode(ContentExpression: contentArg.ToString());
+            return new TextNode(ContentExpression: ExpressionTemplate.Literal(contentArg.ToString()));
         }
 
         if (SymbolEqualityComparer.Default.Equals(method, symbols.ButtonMethod))
@@ -129,8 +129,8 @@ internal static class ComponentModelFactory
             var labelArg = invocation.ArgumentList.Arguments[0].Expression;
             var handlerArg = invocation.ArgumentList.Arguments[1].Expression;
             return new ButtonNode(
-                LabelExpression: labelArg.ToString(),
-                HandlerExpression: handlerArg.ToString());
+                LabelExpression: ExpressionTemplate.Literal(labelArg.ToString()),
+                HandlerExpression: ExpressionTemplate.Literal(handlerArg.ToString()));
         }
 
         if (SymbolEqualityComparer.Default.Equals(method, symbols.VStackMethod))
@@ -179,7 +179,7 @@ internal static class ComponentModelFactory
             }
 
             return new IfNode(
-                ConditionExpression: condArg.ToString(),
+                ConditionExpression: ExpressionTemplate.Literal(condArg.ToString()),
                 Then: thenNode,
                 Otherwise: otherwiseNode);
         }

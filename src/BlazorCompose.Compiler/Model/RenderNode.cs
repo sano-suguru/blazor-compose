@@ -5,16 +5,18 @@ namespace BlazorCompose.Compiler;
 
 /// <summary>
 /// Discriminated union of statically sequenceable UI nodes extracted from a <c>Body</c> expression.
-/// All fields contain only strings and primitive values so that instances are immutable and value-equal.
+/// All fields contain only immutable templates and primitive values so that instances are immutable and value-equal.
 /// No syntax nodes, symbols, semantic models, or absolute TextSpan offsets are stored here.
 /// </summary>
 internal abstract record RenderNode;
 
 /// <summary>Represents a <c>Text(expr)</c> call that emits an HTML <c>span</c>.</summary>
-internal sealed record TextNode(string ContentExpression) : RenderNode;
+internal sealed record TextNode(ExpressionTemplate ContentExpression) : RenderNode;
 
 /// <summary>Represents a <c>Button(label, handler)</c> call that emits an HTML <c>button</c>.</summary>
-internal sealed record ButtonNode(string LabelExpression, string HandlerExpression) : RenderNode;
+internal sealed record ButtonNode(
+    ExpressionTemplate LabelExpression,
+    ExpressionTemplate HandlerExpression) : RenderNode;
 
 /// <summary>Represents a <c>VStack(children…)</c> call that emits an HTML <c>div</c> wrapper.</summary>
 internal sealed record VStackNode(ImmutableArray<RenderNode> Children) : RenderNode
@@ -53,4 +55,39 @@ internal sealed record VStackNode(ImmutableArray<RenderNode> Children) : RenderN
 /// Allocation and emission are implemented in Task 5; the type is defined here so that the model
 /// hierarchy is complete.
 /// </summary>
-internal sealed record IfNode(string ConditionExpression, RenderNode Then, RenderNode? Otherwise) : RenderNode;
+internal sealed record IfNode(ExpressionTemplate ConditionExpression, RenderNode Then, RenderNode? Otherwise) : RenderNode;
+
+internal sealed record LocalBinding(
+    string TypeName,
+    string Name,
+    ExpressionTemplate Initializer);
+
+internal sealed record ExpansionNode(
+    ImmutableArray<LocalBinding> Locals,
+    RenderNode Body) : RenderNode
+{
+    public bool Equals(ExpansionNode? other) =>
+        other is not null
+        && StructuralEquals(Locals, other.Locals)
+        && EqualityComparer<RenderNode>.Default.Equals(Body, other.Body);
+
+    public override int GetHashCode()
+    {
+        var hash = 17;
+        foreach (var local in Locals)
+            hash = unchecked(hash * 31 + (local?.GetHashCode() ?? 0));
+        hash = unchecked(hash * 31 + (Body?.GetHashCode() ?? 0));
+        return hash;
+    }
+
+    private static bool StructuralEquals(ImmutableArray<LocalBinding> a, ImmutableArray<LocalBinding> b)
+    {
+        if (a.Length != b.Length) return false;
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (!EqualityComparer<LocalBinding>.Default.Equals(a[i], b[i]))
+                return false;
+        }
+        return true;
+    }
+}

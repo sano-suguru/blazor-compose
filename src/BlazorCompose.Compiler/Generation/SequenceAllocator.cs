@@ -35,6 +35,8 @@ internal static class SequenceAllocator
         IfNode { Then: var then, Otherwise: var otherwise } =>
             1 + Width(then) + (otherwise is null ? 0 : Width(otherwise)),
 
+        ExpansionNode { Body: var body } => Width(body),
+
         _ => throw new NotSupportedException(
             $"Unknown RenderNode type '{node.GetType().Name}'; add a Width case for it."),
     };

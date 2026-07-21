@@ -56,6 +56,14 @@ internal static class RenderBodyEmitter
                 return EmitVStack(sb, vstack, startSeq, indent);
             case IfNode ifNode:
                 return EmitIf(sb, ifNode, startSeq, indent);
+            case ExpansionNode expansion:
+                foreach (var local in expansion.Locals)
+                {
+                    sb.AppendLine(
+                        $"{indent}{local.TypeName} {local.Name} = {local.Initializer.ToCode()};");
+                }
+
+                return EmitNode(sb, expansion.Body, startSeq, indent);
             default:
                 throw new NotSupportedException(
                     $"Emission for '{node.GetType().Name}' is not yet implemented.");
@@ -65,7 +73,7 @@ internal static class RenderBodyEmitter
     private static int EmitText(StringBuilder sb, TextNode node, int seq, string indent)
     {
         sb.AppendLine($"{indent}__builder.OpenElement({seq}, \"span\");");
-        sb.AppendLine($"{indent}__builder.AddContent({seq + 1}, {node.ContentExpression});");
+        sb.AppendLine($"{indent}__builder.AddContent({seq + 1}, {node.ContentExpression.ToCode()});");
         sb.AppendLine($"{indent}__builder.CloseElement();");
         return seq + SequenceAllocator.Width(node);
     }
@@ -75,8 +83,8 @@ internal static class RenderBodyEmitter
         sb.AppendLine($"{indent}__builder.OpenElement({seq}, \"button\");");
         sb.AppendLine(
             $"{indent}__builder.AddAttribute({seq + 1}, \"onclick\", " +
-            $"{EventCallbackFactory}.Create(this, {node.HandlerExpression}));");
-        sb.AppendLine($"{indent}__builder.AddContent({seq + 2}, {node.LabelExpression});");
+            $"{EventCallbackFactory}.Create(this, {node.HandlerExpression.ToCode()}));");
+        sb.AppendLine($"{indent}__builder.AddContent({seq + 2}, {node.LabelExpression.ToCode()});");
         sb.AppendLine($"{indent}__builder.CloseElement();");
         return seq + SequenceAllocator.Width(node);
     }
@@ -101,7 +109,7 @@ internal static class RenderBodyEmitter
         int thenStart = seq + 1;
 
         sb.AppendLine($"{indent}__builder.OpenRegion({seq});");
-        sb.AppendLine($"{indent}if ({node.ConditionExpression})");
+        sb.AppendLine($"{indent}if ({node.ConditionExpression.ToCode()})");
         sb.AppendLine($"{indent}{{");
         int afterThen = EmitNode(sb, node.Then, thenStart, indent + "    ");
         sb.AppendLine($"{indent}}}");
