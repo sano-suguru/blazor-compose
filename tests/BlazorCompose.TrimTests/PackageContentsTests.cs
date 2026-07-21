@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Xml.Linq;
 
 namespace BlazorCompose.TrimTests;
@@ -235,6 +237,7 @@ public sealed class PackageContentsTests
             .ToArray();
 
         Assert.Empty(unexpectedFiles);
+        AssertRuntimeExposesComposableAttribute(packageArchive);
 
         Assert.DoesNotContain(
             packagedFiles,
@@ -262,6 +265,35 @@ public sealed class PackageContentsTests
             .ToArray();
 
         Assert.Empty(dependencyElements);
+    }
+
+    private static void AssertRuntimeExposesComposableAttribute(ZipArchive packageArchive)
+    {
+        var runtimeEntry = packageArchive.GetEntry("lib/net10.0/BlazorCompose.Runtime.dll");
+
+        Assert.NotNull(runtimeEntry);
+
+        using var entryStream = runtimeEntry.Open();
+        using var memoryStream = new MemoryStream();
+        entryStream.CopyTo(memoryStream);
+        memoryStream.Position = 0;
+
+        using var peReader = new PEReader(memoryStream);
+        var metadataReader = peReader.GetMetadataReader();
+        var packagedTypeNames = metadataReader.TypeDefinitions
+            .Select(handle =>
+            {
+                var typeDefinition = metadataReader.GetTypeDefinition(handle);
+
+                return (
+                    metadataReader.GetString(typeDefinition.Namespace),
+                    metadataReader.GetString(typeDefinition.Name));
+            })
+            .ToArray();
+
+        Assert.Contains(
+            ("BlazorCompose", "ComposableAttribute"),
+            packagedTypeNames);
     }
 
     private static byte[] ReadAllBytes(ZipArchiveEntry entry)
