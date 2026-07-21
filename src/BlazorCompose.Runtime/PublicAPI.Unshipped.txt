@@ -1,4 +1,6 @@
 #nullable enable
+BlazorCompose.ComposableAttribute
+BlazorCompose.ComposableAttribute.ComposableAttribute() -> void
 BlazorCompose.ComposeComponentBase
 BlazorCompose.ComposeComponentBase.ComposeComponentBase() -> void
 abstract BlazorCompose.ComposeComponentBase.Body.get -> BlazorCompose.View

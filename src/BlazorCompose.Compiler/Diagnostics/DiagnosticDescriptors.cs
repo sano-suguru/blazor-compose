@@ -18,6 +18,20 @@ internal static class DiagnosticDescriptors
         description: "Classes that derive from ComposeComponentBase must be declared partial so the source generator can emit the RenderBody override.");
 
     /// <summary>
+    /// BC1002: A <c>[Composable]</c> method does not satisfy the source generator's supported
+    /// static-expansion contract.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BC1002 = new(
+        id: "BC1002",
+        title: "Composable method shape is unsupported",
+        messageFormat: "Composable method '{0}' is unsupported: {1}",
+        category: "BlazorCompose",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description:
+            "A method marked Composable must satisfy the compiler's supported static expansion contract.");
+
+    /// <summary>
     /// BC3001: A <c>Body</c> getter must not mutate component state (single-direction
     /// data-flow violation).
     /// The initial detectable boundary covers statically identifiable direct writes (field assignments,
