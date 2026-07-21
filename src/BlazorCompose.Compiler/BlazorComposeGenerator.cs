@@ -16,18 +16,21 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
         // Resolve the factory-method symbols once per compilation so incremental rebuilds that
         // change only component syntax do not re-walk the BlazorCompose.UI type members.
         var knownSymbols = context.CompilationProvider
-            .Select(static (compilation, _) => KnownSymbols.TryCreate(compilation));
+            .Select(static (compilation, _) => KnownSymbols.TryCreate(compilation))
+            .WithTrackingName("KnownSymbols");
 
         var syntaxCandidates = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => node is ClassDeclarationSyntax { BaseList: not null },
-                static (ctx, _) => ctx);
+                static (ctx, _) => ctx)
+            .WithTrackingName("CandidateDiscovery");
 
         var components = syntaxCandidates
             .Combine(knownSymbols)
             .Select(static (pair, cancellationToken) =>
                 ComponentModelFactory.TryCreate(pair.Left, pair.Right, cancellationToken))
-            .Where(static model => model is not null);
+            .Where(static model => model is not null)
+            .WithTrackingName("ComponentModeling");
 
         context.RegisterSourceOutput(
             components,

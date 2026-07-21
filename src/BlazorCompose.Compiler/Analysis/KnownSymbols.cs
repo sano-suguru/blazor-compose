@@ -1,3 +1,4 @@
+using System;
 using Microsoft.CodeAnalysis;
 
 namespace BlazorCompose.Compiler.Analysis;
@@ -6,7 +7,12 @@ namespace BlazorCompose.Compiler.Analysis;
 /// Caches resolved <see cref="IMethodSymbol"/> references for the <c>BlazorCompose.UI</c> factory
 /// methods so that expression analysis can compare symbols by identity rather than by name.
 /// </summary>
-internal sealed class KnownSymbols
+/// <remarks>
+/// Implements value equality based on symbol availability (present/absent) rather than Roslyn
+/// object identity.  This ensures that unrelated compilation changes (e.g., editing a different
+/// syntax tree) do not invalidate every component model that was Combined with KnownSymbols.
+/// </remarks>
+internal sealed class KnownSymbols : IEquatable<KnownSymbols>
 {
     /// <summary>Resolved symbol for <c>BlazorCompose.UI.Text(string)</c>, or <see langword="null"/> if unavailable.</summary>
     public IMethodSymbol? TextMethod { get; }
@@ -53,5 +59,39 @@ internal sealed class KnownSymbols
     {
         var uiType = compilation.GetTypeByMetadataName("BlazorCompose.UI");
         return uiType is not null ? new KnownSymbols(uiType) : null;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Value equality — based on symbol presence, not Roslyn object identity
+    // ---------------------------------------------------------------------------
+
+    public bool Equals(KnownSymbols? other)
+    {
+        if (other is null) return false;
+        if (ReferenceEquals(this, other)) return true;
+
+        // Two KnownSymbols instances are equal when all factory method slots have the same
+        // presence (non-null vs. null).  Signature details cannot change without a recompile
+        // of the runtime assembly which would already invalidate the CompilationProvider.
+        return (TextMethod is not null) == (other.TextMethod is not null)
+            && (ButtonMethod is not null) == (other.ButtonMethod is not null)
+            && (VStackMethod is not null) == (other.VStackMethod is not null)
+            && (IfMethod is not null) == (other.IfMethod is not null);
+    }
+
+    public override bool Equals(object? obj) => Equals(obj as KnownSymbols);
+
+    public override int GetHashCode()
+    {
+        // Hash reflects presence/absence only — stable across compilations.
+        unchecked
+        {
+            int hash = 17;
+            hash = hash * 31 + (TextMethod is not null ? 1 : 0);
+            hash = hash * 31 + (ButtonMethod is not null ? 1 : 0);
+            hash = hash * 31 + (VStackMethod is not null ? 1 : 0);
+            hash = hash * 31 + (IfMethod is not null ? 1 : 0);
+            return hash;
+        }
     }
 }
