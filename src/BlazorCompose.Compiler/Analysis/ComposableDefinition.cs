@@ -35,10 +35,14 @@ internal enum ComposableAccessRequirementKind
 
 /// <summary>
 /// Records that the expanded body references a member whose accessibility constrains where the body
-/// can legally be inlined.
+/// can legally be inlined.  <see cref="RequiredContainingTypeKey"/> is the fully qualified key of the
+/// type that <em>declares</em> the referenced member (not the composable's own containing type), so a
+/// composable defined in one type that references an inherited protected member is validated against the
+/// member's declaring type.
 /// </summary>
 internal sealed record ComposableAccessRequirement(
     ComposableAccessRequirementKind Kind,
+    string RequiredContainingTypeKey,
     string SymbolDisplayName);
 
 /// <summary>

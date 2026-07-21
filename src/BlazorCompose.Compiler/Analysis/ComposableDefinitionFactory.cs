@@ -61,6 +61,18 @@ internal static class ComposableDefinitionFactory
         if (method.Arity > 0)
             return "must be non-generic";
 
+        // A composable declared in a generic containing type (or nested inside one) would leak the
+        // enclosing unbound type parameter — through a parameter type such as 'T value' or a body
+        // reference such as 'typeof(T)' — into the using-less generated component, where that parameter
+        // is not in scope.  Reject the declaration up front rather than emit uncompilable expansion.
+        for (var containingType = method.ContainingType;
+             containingType is not null;
+             containingType = containingType.ContainingType)
+        {
+            if (containingType.Arity > 0)
+                return "containing type must be non-generic";
+        }
+
         if (declaration.ExpressionBody is null)
             return "must be expression-bodied";
 

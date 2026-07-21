@@ -1597,4 +1597,207 @@ public sealed class GeneratorTests
                 .Where(static d => d.Severity == DiagnosticSeverity.Error));
         Assert.Equal("CS0534", error.Id);
     }
+
+    // -----------------------------------------------------------------------
+    // Composables in generic containing types are rejected (would leak 'T')
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ComposableInGenericContainingTypeWithTypeParameterReportsBC1002AndGeneratesNoSource()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("Widgets.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public class Widgets<T>
+                {
+                    // A composable declared in a generic containing type would leak the unbound type
+                    // parameter 'T' — here through the 'T value' parameter — into the using-less
+                    // generated component, so the declaration is rejected up front.
+                    [Composable]
+                    public static View Show(T value) => Text(value!.ToString());
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => Widgets<int>.Show(5);
+                }
+                """));
+
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
+        Assert.Contains("Show", message);
+        Assert.Contains("containing type must be non-generic", message);
+
+        // The rejected composable never expands, so no broken component source (which would leak the
+        // unbound 'T') is produced.
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void ComposableInGenericContainingTypeReferencingTypeParameterReportsBC1002AndGeneratesNoSource()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("Widgets.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public class Widgets<T>
+                {
+                    // Even a parameterless composable leaks 'T' through its body (typeof(T)); the
+                    // generic containing type is rejected regardless of the parameter list.
+                    [Composable]
+                    public static View Show() => Text(typeof(T).Name);
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => Widgets<int>.Show();
+                }
+                """));
+
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
+        Assert.Contains("Show", message);
+        Assert.Contains("containing type must be non-generic", message);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void ComposableInGenericEnclosingTypeReportsBC1002AndGeneratesNoSource()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("Widgets.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public class Outer<T>
+                {
+                    // The composable's immediate containing type is non-generic, but an *enclosing*
+                    // containing type is generic, so 'T' would still leak: the declaration is rejected.
+                    public static class Inner
+                    {
+                        [Composable]
+                        public static View Show() => Text(typeof(T).Name);
+                    }
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => Outer<int>.Inner.Show();
+                }
+                """));
+
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
+        Assert.Contains("Show", message);
+        Assert.Contains("containing type must be non-generic", message);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    // -----------------------------------------------------------------------
+    // Access requirements are keyed on the referenced member's declaring type,
+    // not the composable definition's containing type
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ProtectedBaseMemberReferencedFromHelperTypeExpandsIntoDerivedComponent()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("WidgetBase.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public abstract partial class WidgetBase : ComposeComponentBase
+                {
+                    protected static string Prefix() => "P:";
+                }
+                """),
+            ("Helper.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                // The composable lives in a *different* type than the one declaring the protected
+                // member.  It can name 'Prefix' because Helper derives from WidgetBase, so the access
+                // requirement must be validated against the member's declaring type (WidgetBase) — not
+                // the composable's containing type (Helper).
+                public abstract partial class Helper : WidgetBase
+                {
+                    [Composable]
+                    public static View Label(string value) => Text(Prefix() + value);
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : WidgetBase
+                {
+                    protected override View Body => Helper.Label("x");
+                }
+                """));
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var counter = Assert.Single(
+            result.GeneratedSources.Where(static s => s.HintName.Contains("Counter")));
+        var generated = counter.SourceText.ToString();
+        Assert.Contains("global::WidgetBase.Prefix()", generated);
+        Assert.DoesNotContain("Label(", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void ProtectedBaseMemberReferencedFromHelperTypeIntoUnrelatedComponentReportsBC1002()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("WidgetBase.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public abstract partial class WidgetBase : ComposeComponentBase
+                {
+                    protected static string Prefix() => "P:";
+                }
+                """),
+            ("Helper.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public abstract partial class Helper : WidgetBase
+                {
+                    [Composable]
+                    public static View Label(string value) => Text(Prefix() + value);
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                // Counter does not derive from WidgetBase, so it cannot legally name the protected
+                // 'Prefix'; the requirement (keyed on WidgetBase) is correctly unsatisfied here.
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => Helper.Label("x");
+                }
+                """));
+
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
+        Assert.Contains("Prefix", message);
+        Assert.Contains("not accessible", message);
+        Assert.Empty(result.GeneratedSources);
+    }
 }

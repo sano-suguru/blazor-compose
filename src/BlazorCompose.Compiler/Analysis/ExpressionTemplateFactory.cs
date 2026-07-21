@@ -255,8 +255,16 @@ internal static class ExpressionTemplateFactory
         if (kind is null)
             return;
 
+        // The requirement is keyed on the type that declares the referenced member so expansion checks
+        // that type — not the composable's own containing type — against the component's inheritance
+        // chain.  A private/protected member always has a containing type; guard defensively regardless.
+        var requiredContainingTypeKey = symbol.ContainingType is { } containingType
+            ? containingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            : string.Empty;
+
         context.AddAccessRequirement(new ComposableAccessRequirement(
             kind.Value,
+            requiredContainingTypeKey,
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
     }
 

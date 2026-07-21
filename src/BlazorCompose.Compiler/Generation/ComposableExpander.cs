@@ -187,7 +187,7 @@ internal static class ComposableExpander
 
         foreach (var requirement in definition.AccessRequirements)
         {
-            if (!SatisfiesAccess(requirement, definition.ContainingTypeKey, generatedTypeInheritanceKeys))
+            if (!SatisfiesAccess(requirement, generatedTypeInheritanceKeys))
             {
                 diagnostics.Add(CreateDiagnostic(
                     call,
@@ -238,7 +238,9 @@ internal static class ComposableExpander
     /// <summary>
     /// Determines whether an inlined body may legally name the referenced non-public member from the
     /// generated component type.  Because the value model is symbol-free, access is decided by comparing
-    /// normalized type keys: a <see cref="ComposableAccessRequirementKind.SameContainingType"/> (private)
+    /// normalized type keys against the type that <em>declares</em> the referenced member
+    /// (<see cref="ComposableAccessRequirement.RequiredContainingTypeKey"/>), not the composable's own
+    /// containing type: a <see cref="ComposableAccessRequirementKind.SameContainingType"/> (private)
     /// member is legal only when the generated component *is* the declaring type, while a
     /// <see cref="ComposableAccessRequirementKind.DerivedContainingType"/> (protected/private-protected)
     /// member is legal when the declaring type appears anywhere in the generated component's inheritance
@@ -246,7 +248,6 @@ internal static class ComposableExpander
     /// </summary>
     private static bool SatisfiesAccess(
         ComposableAccessRequirement requirement,
-        string definitionContainingTypeKey,
         ImmutableArray<string> generatedTypeInheritanceKeys)
     {
         if (generatedTypeInheritanceKeys.IsDefaultOrEmpty)
@@ -256,11 +257,11 @@ internal static class ComposableExpander
         {
             ComposableAccessRequirementKind.SameContainingType =>
                 string.Equals(
-                    definitionContainingTypeKey,
+                    requirement.RequiredContainingTypeKey,
                     generatedTypeInheritanceKeys[0],
                     StringComparison.Ordinal),
             ComposableAccessRequirementKind.DerivedContainingType =>
-                InheritanceChainContains(generatedTypeInheritanceKeys, definitionContainingTypeKey),
+                InheritanceChainContains(generatedTypeInheritanceKeys, requirement.RequiredContainingTypeKey),
             _ => false,
         };
     }
