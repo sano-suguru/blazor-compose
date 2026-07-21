@@ -1,5 +1,6 @@
 .serena/
 .worktrees/
 .superpowers/
+docs/superpowers/
 bin/
 obj/
