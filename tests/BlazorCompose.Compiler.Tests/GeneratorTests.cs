@@ -348,6 +348,49 @@ public sealed class GeneratorTests
     }
 
     [Fact]
+    public void GeneratedSourceDisablesCS0219AfterNullableDirective()
+    {
+        var result = CompilationTestHost.RunGenerator(PartialCounterSource);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        var nullableIdx = generated.IndexOf("#nullable enable", System.StringComparison.Ordinal);
+        var pragmaIdx = generated.IndexOf(
+            "#pragma warning disable CS0219",
+            System.StringComparison.Ordinal);
+        var classIdx = generated.IndexOf("partial class Counter", System.StringComparison.Ordinal);
+
+        Assert.True(nullableIdx >= 0, "nullable directive missing");
+        Assert.True(pragmaIdx > nullableIdx, "CS0219 pragma must follow nullable directive");
+        Assert.True(classIdx > pragmaIdx, "CS0219 pragma must be emitted before generated declarations");
+    }
+
+    [Fact]
+    public void UnusedConstantComposableArgumentKeepsLocalWithoutCS0219Diagnostic()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Ignore(string used, string unused) => Text(used);
+
+                protected override View Body => Ignore("keep", "drop");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        Assert.Contains("string __bc_arg_0_0 = \"keep\";", generated);
+        Assert.Contains("string __bc_arg_0_1 = \"drop\";", generated);
+        Assert.DoesNotContain(
+            result.OutputCompilation.GetDiagnostics(),
+            static diagnostic => diagnostic.Id == "CS0219");
+    }
+
+    [Fact]
     public void LambdaAndMethodGroupReceiveDelegateParameterType()
     {
         const string source = """
