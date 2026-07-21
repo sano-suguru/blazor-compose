@@ -6,8 +6,11 @@
     <Nullable>enable</Nullable>
     <PackageId>BlazorCompose</PackageId>
     <Version>0.1.0-dev</Version>
+    <Authors>BlazorCompose</Authors>
+    <Description>Prerelease runtime and compiler package for the current BlazorCompose production-foundation vertical slice.</Description>
     <IsPackable>true</IsPackable>
     <IsTrimmable>true</IsTrimmable>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackCompilerAnalyzer</TargetsForTfmSpecificContentInPackage>
     <CompilerPackStagingDirectory>$(MSBuildThisFileDirectory)obj/compiler-pack/analyzers/dotnet/cs</CompilerPackStagingDirectory>
     <CompilerPackAssemblyPath>$(CompilerPackStagingDirectory)/BlazorCompose.Compiler.dll</CompilerPackAssemblyPath>
@@ -22,6 +25,12 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="README.md"
+          Pack="true"
+          PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>

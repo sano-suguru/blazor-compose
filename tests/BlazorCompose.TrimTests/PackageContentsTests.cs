@@ -1,18 +1,54 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Xml.Linq;
 
 namespace BlazorCompose.TrimTests;
 
 public sealed class PackageContentsTests
 {
+    private const string PackageId = "BlazorCompose";
+    private const string PackageVersion = "0.1.0-dev";
+    private const string PackageReadmePath = "README.md";
+
+    private static readonly string[] ExpectedPayloadFiles =
+    [
+        "analyzers/dotnet/cs/BlazorCompose.Compiler.dll",
+        "lib/net10.0/BlazorCompose.Runtime.dll"
+    ];
+
     [Fact]
-    public void RepeatedPackProducesRuntimeAndFreshCompilerAssetsWithoutRoslynAssemblies()
+    public void PackProducesOnlyExpectedPayloadFilesAndMetadata()
     {
         var repositoryRoot = FindRepositoryRoot();
-        var packageOutputRoot = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(RepeatedPackProducesRuntimeAndFreshCompilerAssetsWithoutRoslynAssemblies));
+        var packageOutputDirectory = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(PackProducesOnlyExpectedPayloadFilesAndMetadata));
+        var packagePath = Path.Combine(packageOutputDirectory, $"{PackageId}.{PackageVersion}.nupkg");
+        var runtimeProjectPath = Path.Combine(repositoryRoot, "src", "BlazorCompose.Runtime", "BlazorCompose.Runtime.csproj");
+        var verificationScriptPath = Path.Combine(repositoryRoot, "eng", "verify-package.sh");
+
+        if (Directory.Exists(packageOutputDirectory))
+        {
+            Directory.Delete(packageOutputDirectory, recursive: true);
+        }
+
+        Directory.CreateDirectory(packageOutputDirectory);
+
+        RunDotNetPack(runtimeProjectPath, packageOutputDirectory, repositoryRoot);
+        RunBash(verificationScriptPath, packagePath, repositoryRoot);
+
+        using var packageStream = File.OpenRead(packagePath);
+        using var packageArchive = new ZipArchive(packageStream, ZipArchiveMode.Read);
+
+        AssertPackageContents(packageArchive);
+    }
+
+    [Fact]
+    public void RepeatedPackRebuildsCompilerAnalyzerInsteadOfPackingStaleStagedOutput()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var packageOutputRoot = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(RepeatedPackRebuildsCompilerAnalyzerInsteadOfPackingStaleStagedOutput));
         var firstPackageOutputDirectory = Path.Combine(packageOutputRoot, "first");
         var secondPackageOutputDirectory = Path.Combine(packageOutputRoot, "second");
-        var secondPackagePath = Path.Combine(secondPackageOutputDirectory, "BlazorCompose.0.1.0-dev.nupkg");
+        var secondPackagePath = Path.Combine(secondPackageOutputDirectory, $"{PackageId}.{PackageVersion}.nupkg");
         var runtimeProjectPath = Path.Combine(repositoryRoot, "src", "BlazorCompose.Runtime", "BlazorCompose.Runtime.csproj");
         var verificationScriptPath = Path.Combine(repositoryRoot, "eng", "verify-package.sh");
         var compilerOutputPath = GetPackCompilerAssemblyPath(repositoryRoot);
@@ -49,23 +85,7 @@ public sealed class PackageContentsTests
         using var packageStream = File.OpenRead(secondPackagePath);
         using var packageArchive = new ZipArchive(packageStream, ZipArchiveMode.Read);
 
-        var packagedDllPaths = packageArchive.Entries
-            .Where(static entry => entry.FullName.EndsWith(".dll", StringComparison.Ordinal))
-            .Select(static entry => entry.FullName)
-            .OrderBy(static path => path, StringComparer.Ordinal)
-            .ToArray();
-
-        Assert.Equal(
-            [
-                "analyzers/dotnet/cs/BlazorCompose.Compiler.dll",
-                "lib/net10.0/BlazorCompose.Runtime.dll"
-            ],
-            packagedDllPaths);
-
-        Assert.DoesNotContain(
-            packageArchive.Entries,
-            static entry => Path.GetFileName(entry.FullName).StartsWith("Microsoft.CodeAnalysis", StringComparison.Ordinal)
-                && entry.FullName.EndsWith(".dll", StringComparison.Ordinal));
+        AssertPackageContents(packageArchive);
 
         var compilerEntry = packageArchive.GetEntry("analyzers/dotnet/cs/BlazorCompose.Compiler.dll");
 
@@ -79,11 +99,11 @@ public sealed class PackageContentsTests
     }
 
     [Fact]
-    public void PackWithoutBuildRegeneratesMissingCompilerOutput()
+    public void PackWithoutBuildRegeneratesMissingStagedCompilerAnalyzer()
     {
         var repositoryRoot = FindRepositoryRoot();
-        var packageOutputDirectory = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(PackWithoutBuildRegeneratesMissingCompilerOutput));
-        var packagePath = Path.Combine(packageOutputDirectory, "BlazorCompose.0.1.0-dev.nupkg");
+        var packageOutputDirectory = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(PackWithoutBuildRegeneratesMissingStagedCompilerAnalyzer));
+        var packagePath = Path.Combine(packageOutputDirectory, $"{PackageId}.{PackageVersion}.nupkg");
         var runtimeProjectPath = Path.Combine(repositoryRoot, "src", "BlazorCompose.Runtime", "BlazorCompose.Runtime.csproj");
         var verificationScriptPath = Path.Combine(repositoryRoot, "eng", "verify-package.sh");
         var compilerOutputPath = GetPackCompilerAssemblyPath(repositoryRoot);
@@ -104,6 +124,11 @@ public sealed class PackageContentsTests
 
         RunDotNetPack(runtimeProjectPath, packageOutputDirectory, repositoryRoot, noBuild: true);
         RunBash(verificationScriptPath, packagePath, repositoryRoot);
+
+        using var packageStream = File.OpenRead(packagePath);
+        using var packageArchive = new ZipArchive(packageStream, ZipArchiveMode.Read);
+
+        AssertPackageContents(packageArchive);
     }
 
     private static string FindRepositoryRoot()
@@ -191,6 +216,54 @@ public sealed class PackageContentsTests
             $"Command '{fileName} {arguments}' failed with exit code {process.ExitCode}.{Environment.NewLine}STDOUT:{Environment.NewLine}{standardOutput}{Environment.NewLine}STDERR:{Environment.NewLine}{standardError}");
     }
 
+    private static void AssertPackageContents(ZipArchive packageArchive)
+    {
+        var packagedFiles = packageArchive.Entries
+            .Where(static entry => !string.IsNullOrEmpty(entry.Name))
+            .Select(static entry => entry.FullName)
+            .OrderBy(static path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        var packagedPayloadFiles = packagedFiles
+            .Where(IsFunctionalPayloadPath)
+            .ToArray();
+
+        Assert.Equal(ExpectedPayloadFiles, packagedPayloadFiles);
+
+        var unexpectedFiles = packagedFiles
+            .Where(static path => !IsAllowedPackagePath(path))
+            .ToArray();
+
+        Assert.Empty(unexpectedFiles);
+
+        Assert.DoesNotContain(
+            packagedFiles,
+            static path => Path.GetFileName(path).StartsWith("Microsoft.CodeAnalysis", StringComparison.Ordinal)
+                && path.EndsWith(".dll", StringComparison.Ordinal));
+
+        Assert.NotNull(packageArchive.GetEntry(PackageReadmePath));
+
+        var nuspecEntry = packageArchive.GetEntry($"{PackageId}.nuspec");
+
+        Assert.NotNull(nuspecEntry);
+
+        var nuspecDocument = LoadXml(nuspecEntry);
+        var packageNamespace = nuspecDocument.Root!.Name.Namespace;
+        var metadata = nuspecDocument.Root.Element(packageNamespace + "metadata");
+
+        Assert.NotNull(metadata);
+        Assert.Equal(PackageId, metadata.Element(packageNamespace + "id")?.Value);
+        Assert.Equal(PackageVersion, metadata.Element(packageNamespace + "version")?.Value);
+        Assert.Equal(PackageReadmePath, metadata.Element(packageNamespace + "readme")?.Value);
+
+        var dependencyElements = metadata
+            .Descendants()
+            .Where(static element => element.Name.LocalName == "dependency")
+            .ToArray();
+
+        Assert.Empty(dependencyElements);
+    }
+
     private static byte[] ReadAllBytes(ZipArchiveEntry entry)
     {
         using var stream = entry.Open();
@@ -199,5 +272,37 @@ public sealed class PackageContentsTests
         stream.CopyTo(memoryStream);
 
         return memoryStream.ToArray();
+    }
+
+    private static XDocument LoadXml(ZipArchiveEntry entry)
+    {
+        using var stream = entry.Open();
+
+        return XDocument.Load(stream);
+    }
+
+    private static bool IsFunctionalPayloadPath(string path)
+        => path.StartsWith("analyzers/", StringComparison.Ordinal)
+            || path.StartsWith("lib/", StringComparison.Ordinal)
+            || path.StartsWith("build/", StringComparison.Ordinal)
+            || path.StartsWith("buildTransitive/", StringComparison.Ordinal)
+            || path.StartsWith("contentFiles/", StringComparison.Ordinal)
+            || path.StartsWith("tools/", StringComparison.Ordinal)
+            || path.StartsWith("runtimes/", StringComparison.Ordinal);
+
+    private static bool IsAllowedPackagePath(string path)
+    {
+        if (path is "[Content_Types].xml" or "_rels/.rels" or PackageReadmePath or $"{PackageId}.nuspec")
+        {
+            return true;
+        }
+
+        if (path.StartsWith("package/services/metadata/core-properties/", StringComparison.Ordinal)
+            && path.EndsWith(".psmdcp", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return ExpectedPayloadFiles.Contains(path, StringComparer.Ordinal);
     }
 }

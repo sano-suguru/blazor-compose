@@ -58,18 +58,23 @@ trap cleanup EXIT
 
 unzip -q "$package_path" -d "$workdir"
 
-packaged_dlls=$(
+packaged_files=$(
   cd "$workdir"
-  find . -type f -name '*.dll' -print | sed 's#^\./##' | LC_ALL=C sort
+  find . -type f -print | sed 's#^\./##' | LC_ALL=C sort
 )
 
-expected_dlls=$(printf '%s\n' \
+expected_payload_files=$(printf '%s\n' \
   'analyzers/dotnet/cs/BlazorCompose.Compiler.dll' \
   'lib/net10.0/BlazorCompose.Runtime.dll')
 
-if [ "$packaged_dlls" != "$expected_dlls" ]; then
-  echo "Unexpected packaged DLLs:" >&2
-  printf '%s\n' "$packaged_dlls" >&2
+payload_files=$(
+  printf '%s\n' "$packaged_files" |
+    awk '/^(analyzers|lib|build|buildTransitive|contentFiles|tools|runtimes)\//'
+)
+
+if [ "$payload_files" != "$expected_payload_files" ]; then
+  echo "Unexpected files under package payload roots:" >&2
+  printf '%s\n' "$payload_files" >&2
   exit 1
 fi
 
@@ -83,5 +88,68 @@ if [ -n "$roslyn_dlls" ]; then
   printf '%s\n' "$roslyn_dlls" >&2
   exit 1
 fi
+
+if ! printf '%s\n' "$packaged_files" | grep -Fx 'README.md' >/dev/null; then
+  echo "Package README.md is missing." >&2
+  exit 1
+fi
+
+unexpected_files=()
+
+while IFS= read -r packaged_file; do
+  [ -z "$packaged_file" ] && continue
+
+  case "$packaged_file" in
+    '[Content_Types].xml' | '_rels/.rels' | 'BlazorCompose.nuspec' | 'README.md' | \
+    'analyzers/dotnet/cs/BlazorCompose.Compiler.dll' | 'lib/net10.0/BlazorCompose.Runtime.dll' )
+      ;;
+    package/services/metadata/core-properties/*.psmdcp)
+      ;;
+    *)
+      unexpected_files+=("$packaged_file")
+      ;;
+  esac
+done <<< "$packaged_files"
+
+if [ "${#unexpected_files[@]}" -ne 0 ]; then
+  echo "Unexpected package files found:" >&2
+  printf '%s\n' "${unexpected_files[@]}" >&2
+  exit 1
+fi
+
+python3 - "$workdir/BlazorCompose.nuspec" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+nuspec_path = sys.argv[1]
+namespace = {"n": "http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd"}
+
+root = ET.parse(nuspec_path).getroot()
+metadata = root.find("n:metadata", namespace)
+
+if metadata is None:
+    raise SystemExit("Package metadata element is missing from nuspec.")
+
+expected_values = {
+    "id": "BlazorCompose",
+    "version": "0.1.0-dev",
+    "readme": "README.md",
+}
+
+for element_name, expected_value in expected_values.items():
+    actual_value = metadata.findtext(f"n:{element_name}", default="", namespaces=namespace)
+    if actual_value != expected_value:
+        raise SystemExit(
+            f"Unexpected nuspec {element_name!r}: expected {expected_value!r}, got {actual_value!r}."
+        )
+
+dependency_elements = metadata.findall(".//n:dependency", namespace)
+if dependency_elements:
+    dependency_ids = [element.attrib.get("id", "<missing-id>") for element in dependency_elements]
+    raise SystemExit(
+        "Unexpected package dependencies declared in nuspec: "
+        + ", ".join(dependency_ids)
+    )
+PY
 
 echo "Verified package contents: $package_path"
