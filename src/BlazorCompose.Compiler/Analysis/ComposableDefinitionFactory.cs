@@ -108,6 +108,7 @@ internal static class ComposableDefinitionFactory
         var context = new ComposableBodyContext(
             attributeContext.SemanticModel,
             method.ContainingType,
+            method.Name,
             knownSymbols,
             ordinals.ToImmutable(),
             cancellationToken);

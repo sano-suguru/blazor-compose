@@ -15,6 +15,8 @@ namespace BlazorCompose.Compiler.Analysis;
 /// <item>parameter identifiers inside <c>nameof(...)</c> are preserved verbatim;</item>
 /// <item>unqualified type and static-member references are fully qualified;</item>
 /// <item>references to non-public members record an accessibility requirement;</item>
+/// <item>references to source-local constructs (local functions or locals from an enclosing scope)
+/// that cannot exist in generated code report a single declaration BC1002;</item>
 /// <item>local, lambda, and unrecognized identifiers plus all trivia are preserved as literal text.</item>
 /// </list>
 /// </summary>
@@ -42,6 +44,12 @@ internal static class ExpressionTemplateFactory
             var symbol = context.SemanticModel.GetSymbolInfo(name, context.CancellationToken).Symbol;
             if (symbol is null)
                 continue;
+
+            if (IsUnsupportedSourceLocalReference(symbol, expression, out var unsupportedReason))
+            {
+                context.ReportUnsupportedReference(name.GetLocation(), unsupportedReason);
+                continue;
+            }
 
             if (name is IdentifierNameSyntax
                 && context.TryGetParameterOrdinal(symbol, out var ordinal))
@@ -107,6 +115,42 @@ internal static class ExpressionTemplateFactory
             segments.Add(new LiteralExpressionSegment(baseText.Substring(cursor)));
 
         return ExpressionTemplate.Create(segments.ToImmutable());
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="symbol"/> is a source-local construct (a local function,
+    /// local variable, range variable, or label) that is referenced from outside its declaration and
+    /// therefore cannot be reproduced in generated component code.  A source-local declared inside the
+    /// spliced <paramref name="root"/> travels with the literal text and remains legal; one declared in
+    /// an enclosing scope (for example an <c>out var</c> from a sibling argument) does not.
+    /// </summary>
+    private static bool IsUnsupportedSourceLocalReference(
+        ISymbol symbol,
+        ExpressionSyntax root,
+        out string reason)
+    {
+        reason = string.Empty;
+
+        var kindLabel = symbol switch
+        {
+            IMethodSymbol { MethodKind: MethodKind.LocalFunction } => "local function",
+            ILocalSymbol => "local",
+            IRangeVariableSymbol => "range variable",
+            ILabelSymbol => "label",
+            _ => null,
+        };
+
+        if (kindLabel is null)
+            return false;
+
+        foreach (var declaration in symbol.DeclaringSyntaxReferences)
+        {
+            if (root.FullSpan.Contains(declaration.Span))
+                return false;
+        }
+
+        reason = $"references {kindLabel} '{symbol.Name}' that cannot exist in generated component code";
+        return true;
     }
 
     private static void RecordAccessRequirement(ISymbol symbol, ComposableBodyContext context)

@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -136,8 +135,6 @@ internal static class RenderExpressionAnalyzer
         // Explicitly supplied arguments sort by their source position; implicit/default arguments sort
         // after every supplied argument.  Operation arguments are parameter-ordered, so the enumeration
         // index cannot be used as source order.
-        var suppliedCount = operation.Arguments.Count(static a => a.ArgumentKind != ArgumentKind.DefaultValue);
-
         var builder = ImmutableArray.CreateBuilder<ComposableInvocationArgument>(operation.Arguments.Length);
         foreach (var argument in operation.Arguments)
         {
@@ -153,7 +150,13 @@ internal static class RenderExpressionAnalyzer
             if (isImplicitDefault)
             {
                 value = ConstantTemplate.ForParameterDefault(parameter, parameterTypeName);
-                sourceOrder = int.MaxValue - (suppliedCount - parameter.Ordinal);
+
+                // Strictly increasing in parameter ordinal and always greater than any source
+                // position (a small non-negative span start), so implicit defaults sort after every
+                // supplied argument while staying in parameter order.  Subtracting the parameter count
+                // before adding the ordinal keeps the value below int.MaxValue and cannot overflow,
+                // unlike a formula that could add to int.MaxValue when trailing optionals are omitted.
+                sourceOrder = int.MaxValue - method.Parameters.Length + parameter.Ordinal;
             }
             else
             {

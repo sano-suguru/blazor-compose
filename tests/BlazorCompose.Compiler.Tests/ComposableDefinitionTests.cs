@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Linq;
+using BlazorCompose.Compiler;
 using BlazorCompose.Compiler.Analysis;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -92,6 +93,98 @@ public sealed class ComposableDefinitionTests
     }
 
     [Fact]
+    public void ImplicitDefaultArgumentsSortAfterSuppliedInParameterOrder()
+    {
+        var source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Target(string a, int b = 1, int c = 2) => Text(a);
+
+                [Composable]
+                private static View Caller() => Target("supplied");
+
+                protected override View Body => Text("Body");
+            }
+            """;
+
+        var call = (ComposableCallTemplateNode)AnalyzeBody(source, "Caller")!;
+        var arguments = call.Arguments;
+
+        Assert.Equal(3, arguments.Length);
+
+        var supplied = Assert.Single(arguments.Where(static a => !a.IsImplicitDefault));
+        var implicitDefaults = arguments.Where(static a => a.IsImplicitDefault).ToArray();
+
+        // Every implicit default sorts strictly after the single supplied argument.
+        Assert.All(implicitDefaults, d => Assert.True(d.SourceOrder > supplied.SourceOrder));
+
+        // Implicit defaults remain in parameter order (b before c), with no overflow wrap-around.
+        var defaultsInParameterOrder = implicitDefaults.OrderBy(static a => a.ParameterOrdinal).ToArray();
+        for (var index = 1; index < defaultsInParameterOrder.Length; index++)
+        {
+            Assert.True(
+                defaultsInParameterOrder[index].SourceOrder > defaultsInParameterOrder[index - 1].SourceOrder);
+        }
+
+        // Sorting purely by SourceOrder reproduces the declared parameter order (0, 1, 2).
+        var bySourceOrder = arguments.OrderBy(static a => a.SourceOrder)
+            .Select(static a => a.ParameterOrdinal)
+            .ToArray();
+        var expectedOrder = new[] { 0, 1, 2 };
+        Assert.Equal(expectedOrder, bySourceOrder);
+    }
+
+    [Fact]
+    public void BodyReferencingLocalFromEnclosingScopeReportsSingleBC1002()
+    {
+        var source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Helper(string s) => VStack(
+                    Text(int.TryParse(s, out var parsed) ? s : s),
+                    Text(parsed.ToString()));
+
+                protected override View Body => Text("Body");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.Contains("parsed", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void BodyWithSelfContainedLocalReportsNoBC1002()
+    {
+        var source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Helper(string s) =>
+                    Text(int.TryParse(s, out var parsed) ? parsed.ToString() : "0");
+
+                protected override View Body => Text("Body");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+    }
+
+    [Fact]
     public void TemplateReplacesParametersWithHolesAndPreservesNameof()
     {
         var source = """
@@ -129,6 +222,7 @@ public sealed class ComposableDefinitionTests
         var context = new ComposableBodyContext(
             model,
             methodSymbol.ContainingType,
+            methodSymbol.Name,
             knownSymbols,
             ordinals,
             default);
@@ -138,5 +232,34 @@ public sealed class ComposableDefinitionTests
 
         // nameof(name) keeps the original parameter name; the bare 'name' becomes a substituted hole.
         Assert.Equal("nameof(name) + __p0", code);
+    }
+
+    private static RenderTemplateNode? AnalyzeBody(string source, string methodName)
+    {
+        var compilation = CompilationTestHost.CreateCompilation(source);
+        var tree = compilation.SyntaxTrees.Single();
+        var model = compilation.GetSemanticModel(tree);
+
+        var method = tree.GetRoot()
+            .DescendantNodes()
+            .OfType<MethodDeclarationSyntax>()
+            .Single(m => m.Identifier.Text == methodName);
+        var methodSymbol = model.GetDeclaredSymbol(method)!;
+
+        var knownSymbols = KnownSymbols.TryCreate(compilation)!;
+        var ordinals = methodSymbol.Parameters.ToImmutableDictionary(
+            static p => (ISymbol)p,
+            static p => p.Ordinal,
+            SymbolEqualityComparer.Default);
+
+        var context = new ComposableBodyContext(
+            model,
+            methodSymbol.ContainingType,
+            methodSymbol.Name,
+            knownSymbols,
+            ordinals,
+            default);
+
+        return RenderExpressionAnalyzer.Analyze(method.ExpressionBody!.Expression, context);
     }
 }

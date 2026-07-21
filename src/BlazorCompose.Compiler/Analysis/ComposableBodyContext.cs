@@ -17,12 +17,14 @@ internal sealed class ComposableBodyContext
     public ComposableBodyContext(
         SemanticModel semanticModel,
         INamedTypeSymbol containingType,
+        string methodDisplayName,
         KnownSymbols knownSymbols,
         ImmutableDictionary<ISymbol, int> parameterOrdinals,
         CancellationToken cancellationToken)
     {
         SemanticModel = semanticModel;
         ContainingType = containingType;
+        MethodDisplayName = methodDisplayName;
         KnownSymbols = knownSymbols;
         _parameterOrdinals = parameterOrdinals;
         CancellationToken = cancellationToken;
@@ -33,6 +35,8 @@ internal sealed class ComposableBodyContext
     public SemanticModel SemanticModel { get; }
 
     public INamedTypeSymbol ContainingType { get; }
+
+    public string MethodDisplayName { get; }
 
     public KnownSymbols KnownSymbols { get; }
 
@@ -58,5 +62,22 @@ internal sealed class ComposableBodyContext
         }
 
         AccessRequirements.Add(requirement);
+    }
+
+    /// <summary>
+    /// Records a single declaration-time BC1002 for a body that references a symbol which cannot exist
+    /// in generated component code (for example a local function or a local declared in an enclosing
+    /// scope).  Only the first such reference is reported so a body yields exactly one declaration
+    /// diagnostic regardless of how many unsupported references it contains.
+    /// </summary>
+    public void ReportUnsupportedReference(Location location, string reason)
+    {
+        if (Diagnostics.Count > 0)
+            return;
+
+        Diagnostics.Add(DiagnosticInfo.Create(
+            DiagnosticDescriptors.BC1002.Id,
+            location,
+            ImmutableArray.Create(MethodDisplayName, reason)));
     }
 }
