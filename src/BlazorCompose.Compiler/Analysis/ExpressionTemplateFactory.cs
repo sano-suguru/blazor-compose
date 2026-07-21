@@ -12,9 +12,11 @@ namespace BlazorCompose.Compiler.Analysis;
 /// substitution — so that:
 /// <list type="bullet">
 /// <item>identifiers bound to composable parameters become <see cref="ParameterHoleExpressionSegment"/>;</item>
-/// <item>parameter identifiers inside <c>nameof(...)</c> are preserved verbatim;</item>
+/// <item>a <c>nameof(...)</c> whose operand depends on a composable parameter collapses to its
+/// compile-time constant string, because the captured parameter name no longer exists after expansion;</item>
 /// <item>unqualified type and static-member references are fully qualified;</item>
-/// <item>references to non-public members record an accessibility requirement;</item>
+/// <item>references to non-public members — whether unqualified or accessed through a receiver — record an
+/// accessibility requirement;</item>
 /// <item>references to source-local constructs (local functions or locals from an enclosing scope)
 /// that cannot exist in generated code report a single declaration BC1002;</item>
 /// <item>local, lambda, and unrecognized identifiers plus all trivia are preserved as literal text.</item>
@@ -27,6 +29,25 @@ internal static class ExpressionTemplateFactory
         var replacements = new List<Replacement>();
         var replacedSpans = new List<Microsoft.CodeAnalysis.Text.TextSpan>();
 
+        // First pass: collapse every nameof(...) whose operand depends on a composable parameter into its
+        // compile-time constant string.  The parameter name it captures disappears after expansion, so the
+        // operator cannot survive as written; an unrelated nameof(...) is left untouched by the pass below.
+        foreach (var node in expression.DescendantNodesAndSelf())
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+
+            if (node is InvocationExpressionSyntax invocation
+                && TryCreateParameterDependentNameofConstant(invocation, context, out var constantText))
+            {
+                replacements.Add(new Replacement(
+                    invocation.Span,
+                    new LiteralExpressionSegment(constantText)));
+                replacedSpans.Add(invocation.Span);
+            }
+        }
+
+        // Second pass: normalize simple names into parameter holes, fully qualified references, or recorded
+        // accessibility requirements.
         foreach (var node in expression.DescendantNodesAndSelf())
         {
             context.CancellationToken.ThrowIfCancellationRequested();
@@ -34,8 +55,19 @@ internal static class ExpressionTemplateFactory
             if (node is not SimpleNameSyntax name)
                 continue;
 
-            if (IsMemberAccessName(name) || IsInsideNameof(name))
+            // A name inside nameof(...) belongs either to a parameter-dependent nameof already replaced
+            // above or to an unrelated nameof kept verbatim; either way it must not be rewritten on its own.
+            if (IsInsideNameof(name))
                 continue;
+
+            // A member accessed through a receiver keeps its unqualified text (the receiver qualifies it),
+            // but a non-public member still constrains where the body may be inlined, so its accessibility
+            // requirement is recorded even though no text is rewritten.
+            if (IsMemberAccessName(name))
+            {
+                RecordMemberAccessRequirement(name, context);
+                continue;
+            }
 
             // Skip nodes nested inside an already-recorded replacement to avoid overlapping splices.
             if (IsNestedInReplaced(name.Span, replacedSpans))
@@ -169,6 +201,67 @@ internal static class ExpressionTemplateFactory
         context.AddAccessRequirement(new ComposableAccessRequirement(
             kind.Value,
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+    }
+
+    /// <summary>
+    /// Records the accessibility requirement for a member named through a receiver (<c>receiver.Member</c>)
+    /// when that member is a non-public field, property, method, or event.  The member text stays
+    /// unqualified because the receiver already qualifies it, but a private or protected member still
+    /// constrains where the inlined body may legally be placed, so without this the expansion site would
+    /// emit CS0122 instead of the intended BC1002.
+    /// </summary>
+    private static void RecordMemberAccessRequirement(SimpleNameSyntax name, ComposableBodyContext context)
+    {
+        var symbol = context.SemanticModel.GetSymbolInfo(name, context.CancellationToken).Symbol;
+        if (symbol is IFieldSymbol or IPropertySymbol or IMethodSymbol or IEventSymbol)
+            RecordAccessRequirement(symbol, context);
+    }
+
+    /// <summary>
+    /// Detects a <c>nameof(...)</c> operator whose operand depends on a composable parameter and returns
+    /// its compile-time constant string.  Because the parameter it names is replaced by a typed local at
+    /// every expansion site, the operator itself cannot be preserved; its constant value is emitted
+    /// instead.  A <c>nameof(...)</c> that does not reference a parameter (for example over a type or a
+    /// static member) is left untouched so it keeps its ordinary meaning.
+    /// </summary>
+    private static bool TryCreateParameterDependentNameofConstant(
+        InvocationExpressionSyntax invocation,
+        ComposableBodyContext context,
+        out string constantText)
+    {
+        constantText = string.Empty;
+
+        if (invocation.Expression is not IdentifierNameSyntax { Identifier.Text: "nameof" })
+            return false;
+
+        // The nameof operator yields a compile-time constant string; a method literally named 'nameof'
+        // does not, so the constant value doubles as a reliable operator check.
+        var constant = context.SemanticModel.GetConstantValue(invocation, context.CancellationToken);
+        if (!constant.HasValue || constant.Value is not string value)
+            return false;
+
+        if (!NameofOperandReferencesParameter(invocation.ArgumentList, context))
+            return false;
+
+        constantText = SymbolDisplay.FormatLiteral(value, quote: true);
+        return true;
+    }
+
+    private static bool NameofOperandReferencesParameter(
+        ArgumentListSyntax argumentList,
+        ComposableBodyContext context)
+    {
+        foreach (var node in argumentList.DescendantNodes())
+        {
+            if (node is not IdentifierNameSyntax identifier)
+                continue;
+
+            var symbol = context.SemanticModel.GetSymbolInfo(identifier, context.CancellationToken).Symbol;
+            if (symbol is not null && context.TryGetParameterOrdinal(symbol, out _))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsMemberAccessName(SimpleNameSyntax name) =>

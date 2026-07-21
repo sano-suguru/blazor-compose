@@ -897,7 +897,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NameofParameterPreservesSourceParameterName()
+    public void NameofOfParameterEmitsCompileTimeConstantString()
     {
         const string source = """
             using BlazorCompose;
@@ -915,8 +915,61 @@ public sealed class GeneratorTests
         var result = CompilationTestHost.RunGenerator(source);
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
-        Assert.Contains("nameof(value)", generated);
-        Assert.DoesNotContain("nameof(__bc_arg", generated);
+        // The parameter 'value' does not exist after expansion, so nameof(value) must collapse to its
+        // compile-time constant string rather than reference an out-of-scope name.
+        Assert.Contains("__builder.AddContent(1, \"value\")", generated);
+        Assert.DoesNotContain("nameof(", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void NameofOfParameterMemberEmitsMemberNameConstant()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View NamedMember(string value) => Text(nameof(value.Length));
+
+                protected override View Body => NamedMember("x");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // nameof(value.Length) evaluates to "Length"; the vanished parameter must not survive as text.
+        Assert.Contains("__builder.AddContent(1, \"Length\")", generated);
+        Assert.DoesNotContain("value", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void NameofOfNonParameterRemainsUnchangedAndCompiles()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View NamedType(string value) => Text(nameof(System.String) + value);
+
+                protected override View Body => NamedType("x");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // A nameof that does not depend on a composable parameter is left verbatim and stays valid.
+        Assert.Contains("nameof(System.String)", generated);
+        Assert.Contains("__bc_arg_0_0", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
     }
 
     [Fact]
@@ -987,5 +1040,222 @@ public sealed class GeneratorTests
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
         Assert.Contains("global::Box __bc_arg_0_0 = default(global::Box);", generated);
+    }
+
+    // -----------------------------------------------------------------------
+    // Fractional and special floating-point / decimal optional defaults
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void OptionalSingleDefaultEmitsFloatSuffixedLiteral()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Scaled(float scale = 1.5f) => Text(scale.ToString());
+
+                protected override View Body => Scaled();
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // A bare 1.5 is a double literal and cannot initialize a float local (CS0664); the 'F' suffix
+        // makes the constant round-trip into the declared parameter type.
+        Assert.Contains("float __bc_arg_0_0 = 1.5F;", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void OptionalDecimalDefaultEmitsDecimalSuffixedLiteral()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Priced(decimal amount = 1.5m) => Text(amount.ToString());
+
+                protected override View Body => Priced();
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // A bare 1.5 is a double literal and cannot initialize a decimal local (CS0664); the 'M' suffix
+        // makes the constant round-trip into the declared parameter type.
+        Assert.Contains("decimal __bc_arg_0_0 = 1.5M;", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void OptionalSpecialFloatingPointDefaultsEmitTypedConstants()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Counter : ComposeComponentBase
+            {
+                [Composable]
+                private static View Special(
+                    float f = float.NaN,
+                    double d = double.PositiveInfinity,
+                    double n = double.NegativeInfinity) =>
+                    Text(f.ToString() + d.ToString() + n.ToString());
+
+                protected override View Body => Special();
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        Assert.Contains("float __bc_arg_0_0 = float.NaN;", generated);
+        Assert.Contains("double __bc_arg_0_1 = double.PositiveInfinity;", generated);
+        Assert.Contains("double __bc_arg_0_2 = double.NegativeInfinity;", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    // -----------------------------------------------------------------------
+    // Accessibility of member-access (qualified) non-public references
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void PrivateMemberAccessReferenceFromUnrelatedComponentReportsBC1002AtCall()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("Widgets.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public static class Widgets
+                {
+                    private static string Secret() => "s";
+
+                    // Qualified member access to a private member: legal here, but inaccessible once
+                    // inlined into an unrelated component.
+                    [Composable]
+                    public static View Label(string value) => Text(Widgets.Secret() + value);
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => Widgets.Label("x");
+                }
+                """));
+
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
+        Assert.Contains("Secret", message);
+        Assert.Contains("not accessible", message);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void ProtectedMemberAccessReferenceFromUnrelatedComponentReportsBC1002AtCall()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("WidgetBase.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public abstract class WidgetBase
+                {
+                    protected static string Prefix() => "P:";
+
+                    [Composable]
+                    public static View Label(string value) => Text(WidgetBase.Prefix() + value);
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : ComposeComponentBase
+                {
+                    protected override View Body => WidgetBase.Label("x");
+                }
+                """));
+
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
+        Assert.Contains("Prefix", message);
+        Assert.Contains("not accessible", message);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void PrivateMemberAccessReferenceFromSameTypeExpandsAndCompiles()
+    {
+        const string source = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            public partial class Widget : ComposeComponentBase
+            {
+                private static string Secret() => "s";
+
+                [Composable]
+                private static View Label(string value) => Text(Widget.Secret() + value);
+
+                protected override View Body => Label("x");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+        Assert.Contains("global::Widget.Secret()", generated);
+        Assert.DoesNotContain("Label(", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void ProtectedMemberAccessReferenceFromDerivedComponentExpandsAndCompiles()
+    {
+        var result = CompilationTestHost.RunGenerator(
+            ("WidgetBase.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public abstract partial class WidgetBase : ComposeComponentBase
+                {
+                    protected static string Prefix() => "P:";
+
+                    [Composable]
+                    protected static View Label(string value) => Text(WidgetBase.Prefix() + value);
+                }
+                """),
+            ("Counter.cs", """
+                using BlazorCompose;
+                using static BlazorCompose.UI;
+
+                public partial class Counter : WidgetBase
+                {
+                    protected override View Body => Label("x");
+                }
+                """));
+
+        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var counter = Assert.Single(
+            result.GeneratedSources.Where(static s => s.HintName.Contains("Counter")));
+        var generated = counter.SourceText.ToString();
+        Assert.Contains("global::WidgetBase.Prefix()", generated);
+        Assert.DoesNotContain("Label(", generated);
+        CompilationTestHost.AssertOutputCompiles(result);
     }
 }

@@ -80,6 +80,28 @@ public static class CompilationTestHost
     }
 
     /// <summary>
+    /// Asserts that the post-generation <see cref="GeneratorRunResult.OutputCompilation"/> contains no C#
+    /// error diagnostics, so a supported component's generated <c>RenderBody</c> is verified to actually
+    /// compile rather than only inspected as text.  On failure every error is included in the message to
+    /// make the emitted mistake (for example a CS0103 out-of-scope name or a CS0664 mistyped literal)
+    /// immediately visible.
+    /// </summary>
+    public static void AssertOutputCompiles(GeneratorRunResult result)
+    {
+        var errors = result.OutputCompilation
+            .GetDiagnostics()
+            .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToImmutableArray();
+
+        Assert.True(
+            errors.IsEmpty,
+            "Generated output failed to compile: " +
+            string.Join(
+                "; ",
+                errors.Select(static error => error.ToString())));
+    }
+
+    /// <summary>
     /// Compiles <paramref name="source"/> into an in-memory assembly and returns it as a metadata
     /// reference so a consuming compilation can reference a <c>[Composable]</c> method that exists only in
     /// metadata (no source declaration), exercising the metadata-only expansion diagnostic path.

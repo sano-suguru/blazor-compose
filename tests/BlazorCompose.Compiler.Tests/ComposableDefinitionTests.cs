@@ -185,7 +185,7 @@ public sealed class ComposableDefinitionTests
     }
 
     [Fact]
-    public void TemplateReplacesParametersWithHolesAndPreservesNameof()
+    public void TemplateReplacesParametersWithHolesAndCollapsesParameterNameof()
     {
         var source = """
             using BlazorCompose;
@@ -230,8 +230,9 @@ public sealed class ComposableDefinitionTests
         var template = ExpressionTemplateFactory.Create(argument, context);
         var code = template.Substitute(ImmutableArray.Create("__p0")).ToCode();
 
-        // nameof(name) keeps the original parameter name; the bare 'name' becomes a substituted hole.
-        Assert.Equal("nameof(name) + __p0", code);
+        // nameof(name) depends on the parameter, so it collapses to its compile-time constant string;
+        // the bare 'name' becomes the substituted hole.
+        Assert.Equal("\"name\" + __p0", code);
     }
 
     private static RenderTemplateNode? AnalyzeBody(string source, string methodName)
