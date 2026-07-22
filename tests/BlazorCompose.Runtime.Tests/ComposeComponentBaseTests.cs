@@ -22,9 +22,8 @@ public sealed class ComposeComponentBaseTests
         var component = new BodyThrowsComponent();
         var builder = new RenderTreeBuilder();
 
-        var exception = Record.Exception(() => component.Render(builder));
+        component.Render(builder);
 
-        Assert.Null(exception);
         Assert.Equal(1, component.RenderBodyCalls);
     }
 

@@ -108,15 +108,10 @@ public sealed class IncrementalGeneratorTests
         Assert.Equal(2, allOutputs.Length);
 
         // Identify each output by its ComponentModelResult's model value
-        var componentA = allOutputs.SingleOrDefault(o =>
+        var componentA = allOutputs.Single(o =>
             o.Value is ComponentModelResult result && result.Model is { } model && model.ClassName == "ComponentA");
-        var componentB = allOutputs.SingleOrDefault(o =>
+        var componentB = allOutputs.Single(o =>
             o.Value is ComponentModelResult result && result.Model is { } model && model.ClassName == "ComponentB");
-
-        Assert.True(componentA.Value is not null,
-            "Expected ComponentA model in tracked outputs");
-        Assert.True(componentB.Value is not null,
-            "Expected ComponentB model in tracked outputs");
 
         // ComponentA is unchanged → Cached or Unchanged
         Assert.True(
@@ -625,7 +620,7 @@ public sealed class IncrementalGeneratorTests
 
     private static CSharpCompilation CreateCompilation(params SyntaxTree[] trees)
     {
-        var references = BuildMetadataReferences();
+        var references = CompilationTestHost.BuildMetadataReferences();
         return CSharpCompilation.Create(
             assemblyName: "IncrementalTestAssembly",
             syntaxTrees: trees,
@@ -635,57 +630,12 @@ public sealed class IncrementalGeneratorTests
 
     private static CSharpCompilation CreateCompilationWithoutRuntime(params SyntaxTree[] trees)
     {
-        var references = BuildMetadataReferencesWithoutRuntime();
+        // Only ComponentBase — NOT the BlazorCompose.Runtime assembly since we define it in-source.
+        var references = CompilationTestHost.BuildMetadataReferences(includeRuntime: false);
         return CSharpCompilation.Create(
             assemblyName: "IncrementalTestAssembly",
             syntaxTrees: trees,
             references: references,
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-    }
-
-    private static ImmutableArray<MetadataReference> BuildMetadataReferences()
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var references = new List<MetadataReference>();
-
-        void Add(string path)
-        {
-            if (!string.IsNullOrEmpty(path) && seen.Add(path) && File.Exists(path))
-                references.Add(MetadataReference.CreateFromFile(path));
-        }
-
-        foreach (var path in ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? string.Empty)
-                     .Split(Path.PathSeparator))
-        {
-            Add(path);
-        }
-
-        Add(typeof(BlazorCompose.ComposeComponentBase).Assembly.Location);
-        Add(typeof(Microsoft.AspNetCore.Components.ComponentBase).Assembly.Location);
-
-        return [.. references];
-    }
-
-    private static ImmutableArray<MetadataReference> BuildMetadataReferencesWithoutRuntime()
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var references = new List<MetadataReference>();
-
-        void Add(string path)
-        {
-            if (!string.IsNullOrEmpty(path) && seen.Add(path) && File.Exists(path))
-                references.Add(MetadataReference.CreateFromFile(path));
-        }
-
-        foreach (var path in ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? string.Empty)
-                     .Split(Path.PathSeparator))
-        {
-            Add(path);
-        }
-
-        // Only ComponentBase — NOT the BlazorCompose.Runtime assembly since we define it in-source.
-        Add(typeof(Microsoft.AspNetCore.Components.ComponentBase).Assembly.Location);
-
-        return [.. references];
     }
 }

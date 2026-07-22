@@ -118,7 +118,7 @@ public sealed class GeneratorTests
         Assert.DoesNotContain(analyzerDiagnostics, static diagnostic => diagnostic.Id == "BC1001");
 
         var diagnostic = Assert.Single(
-            result.OutputCompilation.GetDiagnostics().Where(static diagnostic => diagnostic.Id == "CS0534"));
+            result.OutputCompilation.GetDiagnostics(), static diagnostic => diagnostic.Id == "CS0534");
 
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Contains("Outer.Counter", diagnostic.GetMessage(CultureInfo.InvariantCulture));
@@ -130,8 +130,7 @@ public sealed class GeneratorTests
         var result = CompilationTestHost.RunGenerator(BlockBodySource);
 
         Assert.Empty(result.GeneratedSources);
-        Assert.Single(result.OutputCompilation.GetDiagnostics()
-            .Where(static d => d.Id == "CS0534"));
+        Assert.Single(result.OutputCompilation.GetDiagnostics(), static d => d.Id == "CS0534");
     }
 
     [Fact]
@@ -140,8 +139,7 @@ public sealed class GeneratorTests
         var result = CompilationTestHost.RunGenerator(UnrecognizedChildSource);
 
         Assert.Empty(result.GeneratedSources);
-        Assert.Single(result.OutputCompilation.GetDiagnostics()
-            .Where(static d => d.Id == "CS0534"));
+        Assert.Single(result.OutputCompilation.GetDiagnostics(), static d => d.Id == "CS0534");
     }
 
     // -----------------------------------------------------------------------
@@ -310,14 +308,9 @@ public sealed class GeneratorTests
         var result = CompilationTestHost.RunGenerator(source);
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
-        // Locals are named by parameter ordinal (first=0, second=1) ...
-        var idxSecond = generated.IndexOf("__bc_arg_0_1 = B();", System.StringComparison.Ordinal);
-        var idxFirst = generated.IndexOf("__bc_arg_0_0 = A();", System.StringComparison.Ordinal);
-        Assert.True(idxSecond >= 0, "second local declaration missing");
-        Assert.True(idxFirst >= 0, "first local declaration missing");
-
-        // ... but emitted in source evaluation order (second is written first in source).
-        Assert.True(idxSecond < idxFirst, "supplied arguments must evaluate in source order");
+        // Locals are named by parameter ordinal (first=0, second=1) but are emitted in source
+        // evaluation order (second is written first in source).
+        AssertAppearsBefore(generated, "__bc_arg_0_1 = B();", "__bc_arg_0_0 = A();");
 
         // The body maps holes back to their parameter ordinals.
         Assert.Contains("__builder.AddContent(1, __bc_arg_0_0 + __bc_arg_0_1)", generated);
@@ -353,15 +346,9 @@ public sealed class GeneratorTests
         var result = CompilationTestHost.RunGenerator(PartialCounterSource);
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
-        var nullableIdx = generated.IndexOf("#nullable enable", System.StringComparison.Ordinal);
-        var pragmaIdx = generated.IndexOf(
-            "#pragma warning disable CS0219",
-            System.StringComparison.Ordinal);
-        var classIdx = generated.IndexOf("partial class Counter", System.StringComparison.Ordinal);
-
-        Assert.True(nullableIdx >= 0, "nullable directive missing");
-        Assert.True(pragmaIdx > nullableIdx, "CS0219 pragma must follow nullable directive");
-        Assert.True(classIdx > pragmaIdx, "CS0219 pragma must be emitted before generated declarations");
+        // The CS0219 pragma must follow the nullable directive and precede the generated declarations.
+        AssertAppearsBefore(generated, "#nullable enable", "#pragma warning disable CS0219");
+        AssertAppearsBefore(generated, "#pragma warning disable CS0219", "partial class Counter");
     }
 
     [Fact]
@@ -465,13 +452,9 @@ public sealed class GeneratorTests
         var result = CompilationTestHost.RunGenerator(source);
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
-        var ifIdx = generated.IndexOf("if (_show)", System.StringComparison.Ordinal);
-        var localIdx = generated.IndexOf("__bc_arg_1_0 = \"in-branch\";", System.StringComparison.Ordinal);
-        var elseIdx = generated.IndexOf("else", System.StringComparison.Ordinal);
-
-        Assert.True(ifIdx >= 0, "if branch missing");
-        Assert.True(localIdx > ifIdx, "expansion local must be declared inside the then branch");
-        Assert.True(elseIdx > localIdx, "expansion local must stay before the else branch");
+        // The expansion local must be declared inside the then branch, before the else branch.
+        AssertAppearsBefore(generated, "if (_show)", "__bc_arg_1_0 = \"in-branch\";");
+        AssertAppearsBefore(generated, "__bc_arg_1_0 = \"in-branch\";", "else");
         Assert.DoesNotContain("Label(", generated);
     }
 
@@ -496,7 +479,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         Assert.Contains("cycle", diagnostic.GetMessage(CultureInfo.InvariantCulture));
         Assert.Empty(result.GeneratedSources);
     }
@@ -521,7 +504,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         Assert.Contains("must be static", diagnostic.GetMessage(CultureInfo.InvariantCulture));
         Assert.Empty(result.GeneratedSources);
     }
@@ -588,7 +571,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("Secret", message);
         Assert.Contains("not accessible", message);
@@ -621,9 +604,9 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var counter = Assert.Single(
-            result.GeneratedSources.Where(static s => s.HintName.Contains("Counter")));
+            result.GeneratedSources, static s => s.HintName.Contains("Counter"));
         var generated = counter.SourceText.ToString();
         Assert.Contains("global::WidgetBase.Prefix", generated);
         Assert.DoesNotContain("Label(", generated);
@@ -655,7 +638,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("Prefix", message);
         Assert.Contains("not accessible", message);
@@ -688,7 +671,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
         Assert.Contains("global::WidgetBase.Prefix", generated);
         Assert.DoesNotContain("Label(", generated);
@@ -720,7 +703,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("Prefix", message);
         Assert.Contains("not accessible", message);
@@ -758,7 +741,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(compilation);
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         Assert.Contains("no source declaration", diagnostic.GetMessage(CultureInfo.InvariantCulture));
         Assert.Empty(result.GeneratedSources);
     }
@@ -783,7 +766,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         Assert.Contains("cannot be named", diagnostic.GetMessage(CultureInfo.InvariantCulture));
         Assert.Empty(result.GeneratedSources);
     }
@@ -833,7 +816,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("cycle", message);
         Assert.Contains("Loop -> Loop", message);
@@ -861,7 +844,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("cycle", message);
         Assert.Contains("Ping -> Pong -> Ping", message);
@@ -1028,7 +1011,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
         // '_secret' is a private field of Widgets and does not exist inside Counter's generated RenderBody;
@@ -1223,7 +1206,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("Secret", message);
         Assert.Contains("not accessible", message);
@@ -1256,7 +1239,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("Prefix", message);
         Assert.Contains("not accessible", message);
@@ -1283,7 +1266,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
         Assert.Contains("global::Widget.Secret()", generated);
         Assert.DoesNotContain("Label(", generated);
@@ -1316,9 +1299,9 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var counter = Assert.Single(
-            result.GeneratedSources.Where(static s => s.HintName.Contains("Counter")));
+            result.GeneratedSources, static s => s.HintName.Contains("Counter"));
         var generated = counter.SourceText.ToString();
         Assert.Contains("global::WidgetBase.Prefix()", generated);
         Assert.DoesNotContain("Label(", generated);
@@ -1350,7 +1333,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
         // The 'items.First()' extension call, only in scope through 'using System.Linq;', normalizes to a
@@ -1390,7 +1373,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
         // The unqualified generic static call and generic type reference — both in scope only through
@@ -1417,7 +1400,7 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
         // The shared analyzer also serves component Body expressions, so the same using-dependent generic
@@ -1450,7 +1433,7 @@ public sealed class GeneratorTests
 
         // The reduced 'Select' fixes an anonymous type argument that cannot be named in generated component
         // code, so normalization is not semantics-preserving and a precise BC1002 is reported instead.
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("cannot be named", message);
         Assert.Empty(result.GeneratedSources);
@@ -1483,7 +1466,7 @@ public sealed class GeneratorTests
         var result = CompilationTestHost.RunGenerator(source);
 
         // A by-reference parameter rejects the declaration with exactly one BC1002 and one reason.
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         Assert.Contains(
             "by-reference parameters are unsupported",
             diagnostic.GetMessage(CultureInfo.InvariantCulture));
@@ -1545,7 +1528,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
         // The static-member access, the typeof type reference, and the generic type reference — all
@@ -1583,7 +1566,7 @@ public sealed class GeneratorTests
         var result = CompilationTestHost.RunGenerator(source);
 
         // The Body path surfaces exactly one BC1002 (previously the diagnostic was discarded).
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         Assert.Contains("cannot be normalized", diagnostic.GetMessage(CultureInfo.InvariantCulture));
 
         // Emission is suppressed rather than producing a broken RenderBody.
@@ -1592,8 +1575,8 @@ public sealed class GeneratorTests
         // The only remaining consequence is the expected abstract-member gap (CS0534); there is no
         // secondary generator error from broken generated source.
         var error = Assert.Single(
-            result.OutputCompilation.GetDiagnostics()
-                .Where(static d => d.Severity == DiagnosticSeverity.Error));
+            result.OutputCompilation.GetDiagnostics(),
+            static d => d.Severity == DiagnosticSeverity.Error);
         Assert.Equal("CS0534", error.Id);
     }
 
@@ -1628,7 +1611,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("Show", message);
         Assert.Contains("containing type must be non-generic", message);
@@ -1664,7 +1647,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("Show", message);
         Assert.Contains("containing type must be non-generic", message);
@@ -1700,7 +1683,7 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("Show", message);
         Assert.Contains("containing type must be non-generic", message);
@@ -1749,9 +1732,9 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
         var counter = Assert.Single(
-            result.GeneratedSources.Where(static s => s.HintName.Contains("Counter")));
+            result.GeneratedSources, static s => s.HintName.Contains("Counter"));
         var generated = counter.SourceText.ToString();
         Assert.Contains("global::WidgetBase.Prefix()", generated);
         Assert.DoesNotContain("Label(", generated);
@@ -1793,10 +1776,26 @@ public sealed class GeneratorTests
                 }
                 """));
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         var message = diagnostic.GetMessage(CultureInfo.InvariantCulture);
         Assert.Contains("Prefix", message);
         Assert.Contains("not accessible", message);
         Assert.Empty(result.GeneratedSources);
+    }
+
+    /// <summary>
+    /// Asserts that both <paramref name="first"/> and <paramref name="second"/> occur in
+    /// <paramref name="source"/> and that <paramref name="first"/> appears before <paramref name="second"/>.
+    /// </summary>
+    private static void AssertAppearsBefore(string source, string first, string second)
+    {
+        var firstIndex = source.IndexOf(first, System.StringComparison.Ordinal);
+        var secondIndex = source.IndexOf(second, System.StringComparison.Ordinal);
+
+        Assert.True(firstIndex >= 0, $"Expected to find '{first}' in generated source.");
+        Assert.True(secondIndex >= 0, $"Expected to find '{second}' in generated source.");
+        Assert.True(
+            firstIndex < secondIndex,
+            $"Expected '{first}' to appear before '{second}' in generated source.");
     }
 }

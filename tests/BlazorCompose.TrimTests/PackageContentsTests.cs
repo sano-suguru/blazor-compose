@@ -189,6 +189,8 @@ public sealed class PackageContentsTests
             workingDirectory);
     }
 
+    private const int ProcessTimeoutMilliseconds = 120_000;
+
     private static void RunProcess(string fileName, string arguments, string workingDirectory)
     {
         var startInfo = new ProcessStartInfo(fileName, arguments)
@@ -204,7 +206,26 @@ public sealed class PackageContentsTests
         var standardOutputTask = process.StandardOutput.ReadToEndAsync();
         var standardErrorTask = process.StandardError.ReadToEndAsync();
 
-        process.WaitForExit();
+        if (!process.WaitForExit(ProcessTimeoutMilliseconds))
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // The process exited on its own between the timeout expiring and the kill attempt.
+            }
+
+            // The kill closes the redirected streams, so the pending reads now complete.
+            process.WaitForExit();
+
+            var timedOutStandardOutput = standardOutputTask.GetAwaiter().GetResult();
+            var timedOutStandardError = standardErrorTask.GetAwaiter().GetResult();
+
+            Assert.Fail(
+                $"Command '{fileName} {arguments}' did not exit within {ProcessTimeoutMilliseconds} ms and was terminated.{Environment.NewLine}STDOUT:{Environment.NewLine}{timedOutStandardOutput}{Environment.NewLine}STDERR:{Environment.NewLine}{timedOutStandardError}");
+        }
 
         var standardOutput = standardOutputTask.GetAwaiter().GetResult();
         var standardError = standardErrorTask.GetAwaiter().GetResult();

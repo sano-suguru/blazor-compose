@@ -12,16 +12,16 @@ namespace BlazorCompose.TrimTests;
 /// </summary>
 public sealed class TrimmedOutputTests
 {
+    private const string AppAssemblyFileName = "BlazorCompose.TrimTestApp.dll";
+    private const string RuntimeAssemblyFileName = "BlazorCompose.Runtime.dll";
+
     private static readonly string? TrimOutputDirectory =
         Environment.GetEnvironmentVariable("BLAZORCOMPOSE_TRIM_OUTPUT");
 
     [Fact]
     public void TrimmedApp_AfterPublish_RetainsRenderBodyMethod()
     {
-        EnsureOutputDirectoryExists();
-
-        var appAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.TrimTestApp.dll");
-        Assert.True(File.Exists(appAssemblyPath), $"App assembly not found at: {appAssemblyPath}");
+        var appAssemblyPath = ResolvePublishedAssembly(AppAssemblyFileName);
 
         var methods = GetMethodNames(appAssemblyPath, "TrimCounter", expectedNamespace: "");
         Assert.Contains("RenderBody", methods);
@@ -30,10 +30,7 @@ public sealed class TrimmedOutputTests
     [Fact]
     public void TrimmedApp_AfterPublish_TrimsBodyGetter()
     {
-        EnsureOutputDirectoryExists();
-
-        var appAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.TrimTestApp.dll");
-        Assert.True(File.Exists(appAssemblyPath), $"App assembly not found at: {appAssemblyPath}");
+        var appAssemblyPath = ResolvePublishedAssembly(AppAssemblyFileName);
 
         var methods = GetMethodNames(appAssemblyPath, "TrimCounter", expectedNamespace: "");
 
@@ -45,11 +42,8 @@ public sealed class TrimmedOutputTests
     [Fact]
     public void TrimmedApp_AfterPublish_TrimsPrivateComposableMethod()
     {
-        EnsureOutputDirectoryExists();
+        var appAssemblyPath = ResolvePublishedAssembly(AppAssemblyFileName);
 
-        var appAssemblyPath = Path.Combine(
-            TrimOutputDirectory!,
-            "BlazorCompose.TrimTestApp.dll");
         var methods = GetMethodNames(
             appAssemblyPath,
             "TrimCounter",
@@ -61,10 +55,7 @@ public sealed class TrimmedOutputTests
     [Fact]
     public void TrimmedRuntime_AfterPublish_TrimsBaseBodyGetter()
     {
-        EnsureOutputDirectoryExists();
-
-        var runtimeAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.Runtime.dll");
-        Assert.True(File.Exists(runtimeAssemblyPath), $"Runtime assembly not found at: {runtimeAssemblyPath}");
+        var runtimeAssemblyPath = ResolvePublishedAssembly(RuntimeAssemblyFileName);
 
         var methods = GetMethodNames(runtimeAssemblyPath, "ComposeComponentBase", expectedNamespace: "BlazorCompose");
 
@@ -75,10 +66,7 @@ public sealed class TrimmedOutputTests
     [Fact]
     public void TrimmedRuntime_AfterPublish_TrimsAllInertFactoryMethods()
     {
-        EnsureOutputDirectoryExists();
-
-        var runtimeAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.Runtime.dll");
-        Assert.True(File.Exists(runtimeAssemblyPath), $"Runtime assembly not found at: {runtimeAssemblyPath}");
+        var runtimeAssemblyPath = ResolvePublishedAssembly(RuntimeAssemblyFileName);
 
         var methods = GetMethodNames(runtimeAssemblyPath, "UI", expectedNamespace: "BlazorCompose");
 
@@ -93,10 +81,7 @@ public sealed class TrimmedOutputTests
     [Fact]
     public void TrimmedRuntime_AfterPublish_RetainsComposeComponentBaseBuildRenderTree()
     {
-        EnsureOutputDirectoryExists();
-
-        var runtimeAssemblyPath = Path.Combine(TrimOutputDirectory!, "BlazorCompose.Runtime.dll");
-        Assert.True(File.Exists(runtimeAssemblyPath), $"Runtime assembly not found at: {runtimeAssemblyPath}");
+        var runtimeAssemblyPath = ResolvePublishedAssembly(RuntimeAssemblyFileName);
 
         var methods = GetMethodNames(runtimeAssemblyPath, "ComposeComponentBase", expectedNamespace: "BlazorCompose");
 
@@ -143,6 +128,21 @@ public sealed class TrimmedOutputTests
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Resolves a published assembly under the trim output directory, asserting that both the output
+    /// directory (the architecture gate) and the assembly itself exist. A missing publish therefore
+    /// fails with a clear, assembly-specific "not found" message instead of a downstream file-open error.
+    /// </summary>
+    private static string ResolvePublishedAssembly(string assemblyFileName)
+    {
+        EnsureOutputDirectoryExists();
+
+        var assemblyPath = Path.Combine(TrimOutputDirectory!, assemblyFileName);
+        Assert.True(File.Exists(assemblyPath), $"Published assembly '{assemblyFileName}' not found at: {assemblyPath}");
+
+        return assemblyPath;
     }
 
     /// <summary>
