@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 
 namespace BlazorCompose.Compiler.Tests;
 
-[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class PartialComponentAnalyzerTests
 {
     // Same component as GeneratorTests but without the partial modifier.

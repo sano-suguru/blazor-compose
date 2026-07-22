@@ -1,12 +1,10 @@
 using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using BlazorCompose.Compiler;
 using BlazorCompose.Compiler.Generation;
 
 namespace BlazorCompose.Compiler.Tests;
 
-[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class SequenceAllocatorTests
 {
     [Fact]
@@ -40,7 +38,7 @@ public sealed class SequenceAllocatorTests
     [Fact]
     public void SequenceAllocator_EmptyVStack_HasWidthOne()
     {
-        Assert.Equal(1, SequenceAllocator.Width(new VStackNode(ImmutableArray<RenderNode>.Empty)));
+        Assert.Equal(1, SequenceAllocator.Width(new VStackNode([])));
     }
 
     // -----------------------------------------------------------------------
@@ -98,7 +96,7 @@ public sealed class SequenceAllocatorTests
             ExpressionTemplate.Literal("() => { }"));
         var ifNode = new IfNode(ExpressionTemplate.Literal("_visible"), then, otherwise);
         var textNode = new TextNode(ExpressionTemplate.Literal("\"always\""));
-        var vstack = new VStackNode(ImmutableArray.Create<RenderNode>(ifNode, textNode));
+        var vstack = new VStackNode([ifNode, textNode]);
 
         int expectedVStackWidth = 1 + SequenceAllocator.Width(ifNode) + SequenceAllocator.Width(textNode);
         Assert.Equal(expectedVStackWidth, SequenceAllocator.Width(vstack));
@@ -108,11 +106,10 @@ public sealed class SequenceAllocatorTests
     public void SequenceAllocator_ExpansionNode_ConsumesOnlyBodyWidth()
     {
         var node = new ExpansionNode(
-            ImmutableArray.Create(
-                new LocalBinding(
+            [new LocalBinding(
                     "global::System.String",
                     "__bc_arg_1_0",
-                    ExpressionTemplate.Literal("GetLabel()"))),
+                    ExpressionTemplate.Literal("GetLabel()"))],
             new TextNode(ExpressionTemplate.Literal("__bc_arg_1_0")));
 
         Assert.Equal(2, SequenceAllocator.Width(node));

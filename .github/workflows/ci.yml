@@ -33,6 +33,11 @@ jobs:
 
       - run: dotnet build BlazorCompose.slnx --no-restore
 
+      # Enforce IDE code-style AND naming rules. `dotnet build`/EnforceCodeStyleInBuild
+      # runs most IDE* analyzers but NOT naming (IDE1006), so the .editorconfig naming
+      # policy is only machine-enforced here. (Whitespace formatting is not yet gated.)
+      - run: dotnet format style BlazorCompose.slnx --verify-no-changes --no-restore
+
       - run: dotnet test BlazorCompose.slnx --no-build
 
       - run: dotnet pack src/BlazorCompose.Runtime/BlazorCompose.Runtime.csproj -c Release -o artifacts/package

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
@@ -7,7 +6,6 @@ using System.Xml.Linq;
 
 namespace BlazorCompose.TrimTests;
 
-[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class PackageContentsTests
 {
     private const string PackageId = "BlazorCompose";
@@ -200,12 +198,8 @@ public sealed class PackageContentsTests
             WorkingDirectory = workingDirectory
         };
 
-        using var process = Process.Start(startInfo);
-
-        if (process is null)
-        {
-            throw new InvalidOperationException($"Could not start process '{fileName}'.");
-        }
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException($"Could not start process '{fileName}'.");
 
         var standardOutputTask = process.StandardOutput.ReadToEndAsync();
         var standardErrorTask = process.StandardError.ReadToEndAsync();

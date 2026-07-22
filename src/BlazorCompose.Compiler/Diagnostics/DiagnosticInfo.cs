@@ -32,7 +32,7 @@ internal sealed record DiagnosticInfo(
             lineSpan.Path ?? string.Empty,
             location.SourceSpan,
             lineSpan.Span,
-            messageArguments.IsDefault ? ImmutableArray<string>.Empty : messageArguments);
+            messageArguments.IsDefault ? [] : messageArguments);
     }
 
     /// <summary>

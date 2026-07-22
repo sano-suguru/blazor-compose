@@ -10,3 +10,107 @@ indent_style = space
 indent_size = 4
 dotnet_sort_system_directives_first = true
 csharp_style_namespace_declarations = file_scoped:warning
+
+# CA1724: the 'UI' type intentionally shares a name with the legacy System.Web.UI
+# namespace, which this project neither targets nor references. The short name is a
+# deliberate part of the fluent API (`using static BlazorCompose.UI;`).
+dotnet_diagnostic.CA1724.severity = none
+
+# --- Modern C# idioms (enforced) ---
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+csharp_style_expression_bodied_properties = true:warning
+csharp_style_expression_bodied_accessors = true:warning
+csharp_style_pattern_matching_over_is_with_cast_check = true:warning
+csharp_style_pattern_matching_over_as_with_null_check = true:warning
+csharp_style_prefer_switch_expression = true:warning
+csharp_style_prefer_pattern_matching = true:warning
+csharp_style_prefer_not_pattern = true:warning
+csharp_style_inlined_variable_declaration = true:warning
+csharp_prefer_simple_default_expression = true:warning
+csharp_style_prefer_index_operator = false:silent
+csharp_style_prefer_range_operator = false:silent
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
+dotnet_style_null_propagation = true:warning
+dotnet_style_coalesce_expression = true:warning
+dotnet_style_object_initializer = true:warning
+dotnet_style_collection_initializer = true:warning
+dotnet_style_prefer_collection_expression = when_types_loosely_match:warning
+dotnet_style_readonly_field = true:warning
+dotnet_style_predefined_type_for_locals_parameters_members = true:warning
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+
+# --- Naming (enforced) ---
+# More specific field rules come first; the first applicable rule wins, so const and
+# static-readonly fields are matched here before the general private-instance-field rule.
+# Constants are PascalCase (never underscore-prefixed).
+dotnet_naming_rule.constants_pascal.severity = warning
+dotnet_naming_rule.constants_pascal.symbols = constants
+dotnet_naming_rule.constants_pascal.style = pascal_case
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.applicable_accessibilities = *
+dotnet_naming_symbols.constants.required_modifiers = const
+
+# Private static readonly fields are PascalCase (treated as constants, not instance fields).
+dotnet_naming_rule.static_readonly_pascal.severity = warning
+dotnet_naming_rule.static_readonly_pascal.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_pascal.style = pascal_case
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.applicable_accessibilities = private
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readonly
+
+# Private instance fields are _camelCase.
+dotnet_naming_rule.private_fields_underscore_camel.severity = warning
+dotnet_naming_rule.private_fields_underscore_camel.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore_camel.style = underscore_camel
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+
+dotnet_naming_rule.interfaces_prefixed_i.severity = warning
+dotnet_naming_rule.interfaces_prefixed_i.symbols = interfaces
+dotnet_naming_rule.interfaces_prefixed_i.style = prefix_i
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_style.prefix_i.required_prefix = I
+dotnet_naming_style.prefix_i.capitalization = pascal_case
+
+dotnet_naming_rule.types_and_members_pascal.severity = warning
+dotnet_naming_rule.types_and_members_pascal.symbols = types_and_members
+dotnet_naming_rule.types_and_members_pascal.style = pascal_case
+dotnet_naming_symbols.types_and_members.applicable_kinds = class,struct,enum,property,method,event,namespace
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+
+# Test projects: analyzer rules that are inappropriate for test code.
+[tests/**/*.cs]
+# Assertions match generated ASCII C# source ordinally; globalization-aware string
+# APIs add only noise here (all CA1307 occurrences originate in these projects).
+# Explicit rule ids are used rather than the Globalization category so they win over
+# the per-rule defaults that AnalysisLevel=latest-all sets.
+dotnet_diagnostic.CA1304.severity = none
+dotnet_diagnostic.CA1305.severity = none
+dotnet_diagnostic.CA1307.severity = none
+dotnet_diagnostic.CA1310.severity = none
+dotnet_diagnostic.CA1311.severity = none
+# xUnit convention: underscore-separated test method names.
+dotnet_diagnostic.CA1707.severity = none
+# ConfigureAwait is unnecessary in test code (no synchronization context to capture).
+dotnet_diagnostic.CA2007.severity = none
+# Test fixtures and sources are legitimately public.
+dotnet_diagnostic.CA1515.severity = none
+# Test-scoped disposal and sync calls are acceptable in test bodies.
+dotnet_diagnostic.CA2000.severity = none
+dotnet_diagnostic.CA1849.severity = none
+# Test helpers need not validate parameters that tests always supply.
+dotnet_diagnostic.CA1062.severity = none
+
+# Sample application: entry-point/page types are public by Blazor convention.
+[samples/**/*.cs]
+dotnet_diagnostic.CA1515.severity = none
+
+# Production code: banned-API usage (reflection / runtime expression compilation) is a
+# hard error, guarding the trimming/AOT-safe contract.
+[src/**/*.cs]
+dotnet_diagnostic.RS0030.severity = error

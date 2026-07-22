@@ -108,7 +108,7 @@ internal static class ComponentModelFactory
             Namespace: namespaceName,
             RootNode: expansion.Node);
 
-        return new ComponentModelResult(model, ImmutableArray<DiagnosticInfo>.Empty);
+        return new ComponentModelResult(model, []);
     }
 
     /// <summary>

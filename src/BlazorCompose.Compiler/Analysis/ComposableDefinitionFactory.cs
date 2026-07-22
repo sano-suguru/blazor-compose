@@ -47,7 +47,7 @@ internal static class ComposableDefinitionFactory
 
         return new ComposableDiscoveryResult(
             new ComposableDefinitionEntry(methodKey, displayName, definition, DeclarationDiagnosticReported: false),
-            ImmutableArray<DiagnosticInfo>.Empty);
+            []);
     }
 
     private static string? ValidateDeclaration(
@@ -115,10 +115,10 @@ internal static class ComposableDefinitionFactory
             // so reject the declaration with BC1002 instead.
             if (IsUnnameableType(parameter.Type))
             {
-                diagnostics = ImmutableArray.Create(BuildDiagnostic(
+                diagnostics = [BuildDiagnostic(
                     declaration,
                     method.Name,
-                    $"parameter '{parameter.Name}' has a type that cannot be named in generated component code"));
+                    $"parameter '{parameter.Name}' has a type that cannot be named in generated component code")];
                 return null;
             }
 
@@ -150,10 +150,10 @@ internal static class ComposableDefinitionFactory
             // that cannot exist in generated code) over the generic non-SSC message.
             diagnostics = context.Diagnostics.Count > 0
                 ? context.Diagnostics.ToImmutable()
-                : ImmutableArray.Create(BuildDiagnostic(
+                : [BuildDiagnostic(
                     declaration,
                     method.Name,
-                    "body must be a statically sequenceable expression"));
+                    "body must be a statically sequenceable expression")];
             return null;
         }
 
@@ -163,7 +163,7 @@ internal static class ComposableDefinitionFactory
             return null;
         }
 
-        diagnostics = ImmutableArray<DiagnosticInfo>.Empty;
+        diagnostics = [];
         return new ComposableDefinition(
             MethodKey.Create(method),
             method.Name,
@@ -182,7 +182,7 @@ internal static class ComposableDefinitionFactory
         var diagnostic = BuildDiagnostic(declaration, displayName, reason);
         return new ComposableDiscoveryResult(
             new ComposableDefinitionEntry(methodKey, displayName, Definition: null, DeclarationDiagnosticReported: true),
-            ImmutableArray.Create(diagnostic));
+            [diagnostic]);
     }
 
     private static DiagnosticInfo BuildDiagnostic(
@@ -192,7 +192,7 @@ internal static class ComposableDefinitionFactory
         DiagnosticInfo.Create(
             DiagnosticDescriptors.BC1002.Id,
             declaration.Identifier.GetLocation(),
-            ImmutableArray.Create(displayName, reason));
+            [displayName, reason]);
 
     /// <summary>
     /// Determines whether <paramref name="type"/> (or a component of it — array element, pointed-at type,

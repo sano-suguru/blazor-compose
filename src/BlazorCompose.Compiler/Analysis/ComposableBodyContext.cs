@@ -78,6 +78,6 @@ internal sealed class ComposableBodyContext
         Diagnostics.Add(DiagnosticInfo.Create(
             DiagnosticDescriptors.BC1002.Id,
             location,
-            ImmutableArray.Create(MethodDisplayName, reason)));
+            [MethodDisplayName, reason]));
     }
 }

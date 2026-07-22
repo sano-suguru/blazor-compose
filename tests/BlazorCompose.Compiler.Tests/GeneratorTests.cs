@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using BlazorCompose.Compiler.Diagnostics;
@@ -6,7 +5,6 @@ using Microsoft.CodeAnalysis;
 
 namespace BlazorCompose.Compiler.Tests;
 
-[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class GeneratorTests
 {
     // The canonical counter component used to verify generator output.
@@ -745,8 +743,7 @@ public sealed class GeneratorTests
             "ExternalWidgets");
 
         var compilation = CompilationTestHost.CreateCompilation(
-            new[]
-            {
+            [
                 ("Counter.cs", """
                     using BlazorCompose;
                     using static BlazorCompose.UI;
@@ -756,7 +753,7 @@ public sealed class GeneratorTests
                         protected override View Body => ExternalWidgets.Badge("hi");
                     }
                     """),
-            },
+            ],
             libraryReference);
 
         var result = CompilationTestHost.RunGenerator(compilation);

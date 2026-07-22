@@ -12,7 +12,6 @@ namespace BlazorCompose.Compiler.Tests;
 /// changes across driver re-runs, the unchanged component model must be Cached/Unchanged
 /// while the changed component must be recomputed.
 /// </summary>
-[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class IncrementalGeneratorTests
 {
     private const string ComponentASource = """
@@ -558,7 +557,7 @@ public sealed class IncrementalGeneratorTests
         Add(typeof(BlazorCompose.ComposeComponentBase).Assembly.Location);
         Add(typeof(Microsoft.AspNetCore.Components.ComponentBase).Assembly.Location);
 
-        return references.ToImmutableArray();
+        return [.. references];
     }
 
     private static ImmutableArray<MetadataReference> BuildMetadataReferencesWithoutRuntime()
@@ -581,6 +580,6 @@ public sealed class IncrementalGeneratorTests
         // Only ComponentBase — NOT the BlazorCompose.Runtime assembly since we define it in-source.
         Add(typeof(Microsoft.AspNetCore.Components.ComponentBase).Assembly.Location);
 
-        return references.ToImmutableArray();
+        return [.. references];
     }
 }
