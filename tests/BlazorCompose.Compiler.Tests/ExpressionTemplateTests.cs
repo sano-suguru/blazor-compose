@@ -1,12 +1,14 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using BlazorCompose.Compiler;
 
 namespace BlazorCompose.Compiler.Tests;
 
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class ExpressionTemplateTests
 {
     [Fact]
-    public void SubstituteReplacesOnlyParameterHoles()
+    public void ExpressionTemplate_WhenSubstituted_ReplacesOnlyParameterHoles()
     {
         var template = ExpressionTemplate.Create(
             ImmutableArray.Create<ExpressionSegment>(
@@ -20,7 +22,7 @@ public sealed class ExpressionTemplateTests
     }
 
     [Fact]
-    public void StructurallyEqualTemplatesCompareEqual()
+    public void ExpressionTemplate_StructurallyEqualTemplates_CompareEqual()
     {
         var left = ExpressionTemplate.Create(
             ImmutableArray.Create<ExpressionSegment>(

@@ -1,12 +1,14 @@
+using System.Diagnostics.CodeAnalysis;
 using BlazorCompose.IntegrationTests.Components;
 using Bunit;
 
 namespace BlazorCompose.IntegrationTests;
 
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class RenderingTests : BunitContext
 {
     [Fact]
-    public void CounterClickRerendersThroughBlazor()
+    public void Counter_WhenIncrementButtonClicked_RerendersWithIncrementedCount()
     {
         var cut = Render<CounterComponent>();
 
@@ -18,7 +20,7 @@ public sealed class RenderingTests : BunitContext
     }
 
     [Fact]
-    public void ConditionalToggleRemovesPrefixAndPreservesFollowingMarkupOrder()
+    public void ConditionalComponent_WhenToggleButtonClicked_RemovesPrefixAndPreservesMarkupOrder()
     {
         var cut = Render<ConditionalComponent>();
 
@@ -30,7 +32,7 @@ public sealed class RenderingTests : BunitContext
     }
 
     [Fact]
-    public void PrivateStaticComposableHelperRendersAndEvaluatesArgumentsOncePerRender()
+    public void ComposableCounterComponent_WhenRenderedAndIncremented_EvaluatesArgumentsOncePerRender()
     {
         var cut = Render<ComposableCounterComponent>();
 

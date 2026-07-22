@@ -23,6 +23,18 @@ public partial class CounterPage : ComposeComponentBase
 - **[DESIGN.md](DESIGN.md)** — design overview: background, goals, API design, and platform strategy. Start here.
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — internal architecture: the compilation algorithm, static sequence assignment, memory layout, and analyzer diagnostics.
 
+## Testing conventions
+
+Test methods follow `SubjectOrMethod_Scenario_ExpectedBehavior`. Tests should
+prefer observable behavior and real, deterministic collaborators over
+interaction-based mocks. Test doubles are reserved for boundaries such as
+remote services, wall-clock time, and randomness.
+
+Compiler tests may inspect generated source, sequence numbers, incremental
+cache behavior, and diagnostic spans because these are architectural
+contracts. Test files may correspond to production types, but a one-to-one
+file mapping is not required; group tests by cohesive capability.
+
 ## Status
 
 What works today lives in the code, the tests, and the Issues — not the design docs above.

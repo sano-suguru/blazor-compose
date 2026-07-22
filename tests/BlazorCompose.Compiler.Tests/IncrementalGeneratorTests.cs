@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using BlazorCompose.Compiler.Analysis;
 using Microsoft.CodeAnalysis;
@@ -11,6 +12,7 @@ namespace BlazorCompose.Compiler.Tests;
 /// changes across driver re-runs, the unchanged component model must be Cached/Unchanged
 /// while the changed component must be recomputed.
 /// </summary>
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class IncrementalGeneratorTests
 {
     private const string ComponentASource = """
@@ -55,7 +57,7 @@ public sealed class IncrementalGeneratorTests
     /// Identifies each component by its <see cref="ComponentModel"/> value.
     /// </summary>
     [Fact]
-    public void UnchangedComponentIsCachedWhenOnlyOtherTreeChanges()
+    public void IncrementalGenerator_WhenOnlyOtherTreeChanges_CachesUnchangedComponent()
     {
         // Arrange: two components in separate syntax trees
         var treeA = CSharpSyntaxTree.ParseText(
@@ -132,7 +134,7 @@ public sealed class IncrementalGeneratorTests
     /// Proves that when nothing changes between runs, all component models are cached.
     /// </summary>
     [Fact]
-    public void AllComponentsCachedWhenNothingChanges()
+    public void IncrementalGenerator_WhenNothingChanges_CachesAllComponents()
     {
         var treeA = CSharpSyntaxTree.ParseText(
             ComponentASource,
@@ -182,7 +184,7 @@ public sealed class IncrementalGeneratorTests
     /// symbol presence.
     /// </summary>
     [Fact]
-    public void ChangedUIApiSignatureInvalidatesAllComponentModels()
+    public void IncrementalGenerator_WhenUIApiSignatureChanges_InvalidatesAllComponentModels()
     {
         // Source-defined UI type so we can mutate its signature between runs.
         const string runtimeSourceV1 = """
@@ -370,7 +372,7 @@ public sealed class IncrementalGeneratorTests
     /// the unrelated component that never calls it recomputes to an equal model (Unchanged/Cached).
     /// </summary>
     [Fact]
-    public void ChangingComposableDefinitionInvalidatesOnlyDependentCaller()
+    public void IncrementalGenerator_WhenComposableDefinitionChanges_InvalidatesOnlyDependentCaller()
     {
         var widgetsTree = ParseTree(WidgetsSource, "Widgets.cs");
         var callerTree = ParseTree(CallerSource, "Caller.cs");
@@ -406,7 +408,7 @@ public sealed class IncrementalGeneratorTests
     /// rather than rebuilding a distinct-but-equal value.
     /// </summary>
     [Fact]
-    public void ComposableRegistryIsCachedOnIdenticalRerun()
+    public void IncrementalGenerator_OnIdenticalRerun_CachesComposableRegistry()
     {
         var widgetsTree = ParseTree(WidgetsSource, "Widgets.cs");
         var callerTree = ParseTree(CallerSource, "Caller.cs");
@@ -432,7 +434,7 @@ public sealed class IncrementalGeneratorTests
     /// proving equality is by sorted value rather than discovery order or ImmutableArray reference.
     /// </summary>
     [Fact]
-    public void ReorderingSyntaxTreesProducesEqualRegistry()
+    public void IncrementalGenerator_WhenSyntaxTreesAreReordered_ProducesEqualRegistry()
     {
         var registryForward = ExtractRegistry(
             ParseTree(WidgetsSource, "Widgets.cs"),
@@ -453,7 +455,7 @@ public sealed class IncrementalGeneratorTests
     /// because a fresh diagnostic value was allocated.
     /// </summary>
     [Fact]
-    public void DiagnosticOnlyModelResultIsCachedOnIdenticalRerun()
+    public void IncrementalGenerator_OnIdenticalRerun_CachesDiagnosticOnlyModelResult()
     {
         const string cyclicSource = """
             using BlazorCompose;

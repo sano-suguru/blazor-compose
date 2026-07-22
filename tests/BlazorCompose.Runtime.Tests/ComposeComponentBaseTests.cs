@@ -1,12 +1,14 @@
+using System.Diagnostics.CodeAnalysis;
 using BlazorCompose;
 using Microsoft.AspNetCore.Components.Rendering;
 
 namespace BlazorCompose.Runtime.Tests;
 
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class ComposeComponentBaseTests
 {
     [Fact]
-    public void BuildRenderTreeDelegatesToGeneratedRenderBody()
+    public void BuildRenderTree_WhenRendered_DelegatesToGeneratedRenderBody()
     {
         var component = new TestComponent();
         var builder = new RenderTreeBuilder();
@@ -17,7 +19,7 @@ public sealed class ComposeComponentBaseTests
     }
 
     [Fact]
-    public void BuildRenderTreeDoesNotEvaluateBody()
+    public void BuildRenderTree_WhenRendered_DoesNotEvaluateBody()
     {
         var component = new BodyThrowsComponent();
         var builder = new RenderTreeBuilder();
@@ -29,7 +31,7 @@ public sealed class ComposeComponentBaseTests
     }
 
     [Fact]
-    public void UiFactoriesRemainInertAtRuntime()
+    public void UIFactories_WhenInvoked_RemainInertAtRuntime()
     {
         var onClickCalled = false;
 

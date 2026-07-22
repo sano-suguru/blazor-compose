@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using BlazorCompose.Compiler.Diagnostics;
@@ -5,6 +6,7 @@ using Microsoft.CodeAnalysis;
 
 namespace BlazorCompose.Compiler.Tests;
 
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class GeneratorTests
 {
     // The canonical counter component used to verify generator output.
@@ -73,7 +75,7 @@ public sealed class GeneratorTests
         """;
 
     [Fact]
-    public void PartialComponentGeneratesRenderBody()
+    public void Generator_PartialComponent_EmitsRenderBody()
     {
         var result = CompilationTestHost.RunGenerator(PartialCounterSource);
 
@@ -86,7 +88,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void VStackWithTextAndButtonGeneratesLinearSscRenderBody()
+    public void Generator_VStackWithTextAndButton_EmitsLinearSscRenderBody()
     {
         var result = CompilationTestHost.RunGenerator(VStackCounterSource);
 
@@ -108,7 +110,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public async Task NestedPartialComponentDoesNotGenerateSourceAndProducesCS0534()
+    public async Task Generator_NestedPartialComponent_EmitsNoSourceAndReportsCS0534()
     {
         var result = CompilationTestHost.RunGenerator(NestedPartialCounterSource);
 
@@ -125,7 +127,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void BlockBodyDoesNotGenerateSourceAndProducesCS0534()
+    public void Generator_BlockBody_EmitsNoSourceAndReportsCS0534()
     {
         var result = CompilationTestHost.RunGenerator(BlockBodySource);
 
@@ -135,7 +137,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void UnrecognizedChildDoesNotGenerateSourceAndProducesCS0534()
+    public void Generator_UnrecognizedChild_EmitsNoSourceAndReportsCS0534()
     {
         var result = CompilationTestHost.RunGenerator(UnrecognizedChildSource);
 
@@ -164,7 +166,7 @@ public sealed class GeneratorTests
         """;
 
     [Fact]
-    public void IfWithBothBranchesGeneratesDisjointSequenceRangesAndStableFollowingSequence()
+    public void Generator_IfWithBothBranches_EmitsDisjointSequenceRangesAndStableFollowingSequence()
     {
         var result = CompilationTestHost.RunGenerator(IfCounterSource);
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
@@ -209,7 +211,7 @@ public sealed class GeneratorTests
         """;
 
     [Fact]
-    public void IfWithNullOtherwiseGeneratesThenBranchOnly()
+    public void Generator_IfWithNullOtherwise_EmitsThenBranchOnly()
     {
         var result = CompilationTestHost.RunGenerator(IfOnlyThenSource);
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
@@ -228,7 +230,7 @@ public sealed class GeneratorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void StaticComposableExpandsWithoutRuntimeMethodCall()
+    public void Generator_StaticComposable_ExpandsWithoutRuntimeMethodCall()
     {
         const string source = """
             using BlazorCompose;
@@ -257,7 +259,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void SameComposableCalledTwiceGetsDistinctLocalsAndSequences()
+    public void Generator_SameComposableCalledTwice_UsesDistinctLocalsAndSequences()
     {
         const string source = """
             using BlazorCompose;
@@ -288,7 +290,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NamedArgumentsEmittedInSourceOrderMappedToParameterOrdinals()
+    public void Generator_NamedArguments_EmitInSourceOrderMappedToParameterOrdinals()
     {
         const string source = """
             using BlazorCompose;
@@ -324,7 +326,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void UnusedSuppliedArgumentStillReceivesLocal()
+    public void Generator_UnusedSuppliedArgument_StillReceivesLocal()
     {
         const string source = """
             using BlazorCompose;
@@ -348,7 +350,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void GeneratedSourceDisablesCS0219AfterNullableDirective()
+    public void Generator_GeneratedSource_DisablesCS0219AfterNullableDirective()
     {
         var result = CompilationTestHost.RunGenerator(PartialCounterSource);
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
@@ -365,7 +367,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void UnusedConstantComposableArgumentKeepsLocalWithoutCS0219Diagnostic()
+    public void Generator_UnusedConstantComposableArgument_KeepsLocalWithoutCS0219Diagnostic()
     {
         const string source = """
             using BlazorCompose;
@@ -391,7 +393,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void LambdaAndMethodGroupReceiveDelegateParameterType()
+    public void Generator_LambdaAndMethodGroupArguments_ReceiveDelegateParameterType()
     {
         const string source = """
             using BlazorCompose;
@@ -420,7 +422,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NumericImplicitConversionUsesDeclaredParameterType()
+    public void Generator_NumericImplicitConversion_UsesDeclaredParameterType()
     {
         const string source = """
             using BlazorCompose;
@@ -444,7 +446,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ComposableCallInIfBranchDeclaresLocalInsideBranchBraces()
+    public void Generator_ComposableCallInIfBranch_DeclaresLocalInsideBranchBraces()
     {
         const string source = """
             using BlazorCompose;
@@ -476,7 +478,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void RecursiveComposableCycleReportsBC1002AndGeneratesNoSource()
+    public void Generator_RecursiveComposableCycle_ReportsBC1002AndEmitsNoSource()
     {
         const string source = """
             using BlazorCompose;
@@ -502,7 +504,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void CallToInvalidComposableReportsOnlyDeclarationDiagnostic()
+    public void Generator_CallToInvalidComposable_ReportsOnlyDeclarationDiagnostic()
     {
         const string source = """
             using BlazorCompose;
@@ -531,7 +533,7 @@ public sealed class GeneratorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void CrossFileComposableUsesDefinitionSemanticModel()
+    public void Generator_CrossFileComposable_UsesDefinitionSemanticModel()
     {
         var result = CompilationTestHost.RunGenerator(
             ("Widgets.cs", """
@@ -563,7 +565,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void PrivateCrossTypeMemberReferenceReportsBC1002AtCall()
+    public void Generator_PrivateCrossTypeMemberReference_ReportsBC1002AtCall()
     {
         var result = CompilationTestHost.RunGenerator(
             ("Widgets.cs", """
@@ -596,7 +598,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ProtectedCrossTypeReferenceIsValidatedAgainstInheritance()
+    public void Generator_ProtectedCrossTypeReference_IsValidatedAgainstInheritance()
     {
         var result = CompilationTestHost.RunGenerator(
             ("WidgetBase.cs", """
@@ -630,7 +632,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ProtectedCrossTypeReferenceFromUnrelatedComponentReportsBC1002AtCall()
+    public void Generator_ProtectedCrossTypeReferenceFromUnrelatedComponent_ReportsBC1002AtCall()
     {
         var result = CompilationTestHost.RunGenerator(
             ("WidgetBase.cs", """
@@ -663,7 +665,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ProtectedInternalCrossTypeReferenceIsAccessibleThroughInternalHalf()
+    public void Generator_ProtectedInternalCrossTypeReference_IsAccessibleThroughInternalHalf()
     {
         var result = CompilationTestHost.RunGenerator(
             ("WidgetBase.cs", """
@@ -695,7 +697,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void PrivateProtectedCrossTypeReferenceFromUnrelatedComponentReportsBC1002AtCall()
+    public void Generator_PrivateProtectedCrossTypeReferenceFromUnrelatedComponent_ReportsBC1002AtCall()
     {
         var result = CompilationTestHost.RunGenerator(
             ("WidgetBase.cs", """
@@ -728,7 +730,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void MetadataOnlyComposableReportsBC1002AtCall()
+    public void Generator_MetadataOnlyComposable_ReportsBC1002AtCall()
     {
         var libraryReference = CompilationTestHost.CompileToMetadataReference("""
             using BlazorCompose;
@@ -765,7 +767,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void UnnameableParameterTypeReportsBC1002AndGeneratesNoSource()
+    public void Generator_UnnameableParameterType_ReportsBC1002AndEmitsNoSource()
     {
         const string source = """
             using BlazorCompose;
@@ -790,7 +792,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NestedComposableCallsExpandTransitively()
+    public void Generator_NestedComposableCalls_ExpandTransitively()
     {
         const string source = """
             using BlazorCompose;
@@ -817,7 +819,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void DirectRecursionReportsSingleBC1002()
+    public void Generator_DirectRecursion_ReportsSingleBC1002()
     {
         const string source = """
             using BlazorCompose;
@@ -842,7 +844,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void IndirectRecursionReportsSingleBC1002WithCallChain()
+    public void Generator_IndirectRecursion_ReportsSingleBC1002WithCallChain()
     {
         const string source = """
             using BlazorCompose;
@@ -870,7 +872,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ParameterShadowingInsideNestedLambdaIsNotReplaced()
+    public void Generator_ParameterShadowingInsideNestedLambda_IsNotReplaced()
     {
         const string source = """
             using BlazorCompose;
@@ -897,7 +899,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NameofOfParameterEmitsCompileTimeConstantString()
+    public void Generator_NameofParameter_EmitsCompileTimeConstantString()
     {
         const string source = """
             using BlazorCompose;
@@ -923,7 +925,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NameofOfParameterMemberEmitsMemberNameConstant()
+    public void Generator_NameofParameterMember_EmitsMemberNameConstant()
     {
         const string source = """
             using BlazorCompose;
@@ -948,7 +950,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NameofOfNonParameterCollapsesToCompileTimeConstantString()
+    public void Generator_NameofNonParameter_CollapsesToCompileTimeConstantString()
     {
         const string source = """
             using BlazorCompose;
@@ -973,7 +975,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NameofOfUsingImportedTypeCollapsesToConstantAndCompiles()
+    public void Generator_NameofUsingImportedType_CollapsesToConstantAndCompiles()
     {
         const string source = """
             using BlazorCompose;
@@ -1000,7 +1002,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void NameofOfPrivateDefinitionMemberCollapsesToConstantAndCompiles()
+    public void Generator_NameofPrivateDefinitionMember_CollapsesToConstantAndCompiles()
     {
         var result = CompilationTestHost.RunGenerator(
             ("Widgets.cs", """
@@ -1040,7 +1042,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void InterpolatedParameterReferenceIsReplaced()
+    public void Generator_InterpolatedParameterReference_IsReplaced()
     {
         const string source = """
             using BlazorCompose;
@@ -1062,7 +1064,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void OptionalEnumDefaultIsFullyQualified()
+    public void Generator_OptionalEnumDefault_IsFullyQualified()
     {
         const string source = """
             using BlazorCompose;
@@ -1086,7 +1088,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void OptionalValueTypeDefaultEmitsDefaultOfFullyQualifiedType()
+    public void Generator_OptionalValueTypeDefault_EmitsDefaultOfFullyQualifiedType()
     {
         const string source = """
             using BlazorCompose;
@@ -1114,7 +1116,7 @@ public sealed class GeneratorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void OptionalSingleDefaultEmitsFloatSuffixedLiteral()
+    public void Generator_OptionalSingleDefault_EmitsFloatSuffixedLiteral()
     {
         const string source = """
             using BlazorCompose;
@@ -1139,7 +1141,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void OptionalDecimalDefaultEmitsDecimalSuffixedLiteral()
+    public void Generator_OptionalDecimalDefault_EmitsDecimalSuffixedLiteral()
     {
         const string source = """
             using BlazorCompose;
@@ -1164,7 +1166,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void OptionalSpecialFloatingPointDefaultsEmitTypedConstants()
+    public void Generator_OptionalSpecialFloatingPointDefaults_EmitTypedConstants()
     {
         const string source = """
             using BlazorCompose;
@@ -1197,7 +1199,7 @@ public sealed class GeneratorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void PrivateMemberAccessReferenceFromUnrelatedComponentReportsBC1002AtCall()
+    public void Generator_PrivateMemberAccessReferenceFromUnrelatedComponent_ReportsBC1002AtCall()
     {
         var result = CompilationTestHost.RunGenerator(
             ("Widgets.cs", """
@@ -1232,7 +1234,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ProtectedMemberAccessReferenceFromUnrelatedComponentReportsBC1002AtCall()
+    public void Generator_ProtectedMemberAccessReferenceFromUnrelatedComponent_ReportsBC1002AtCall()
     {
         var result = CompilationTestHost.RunGenerator(
             ("WidgetBase.cs", """
@@ -1265,7 +1267,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void PrivateMemberAccessReferenceFromSameTypeExpandsAndCompiles()
+    public void Generator_PrivateMemberAccessReferenceFromSameType_ExpandsAndCompiles()
     {
         const string source = """
             using BlazorCompose;
@@ -1292,7 +1294,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ProtectedMemberAccessReferenceFromDerivedComponentExpandsAndCompiles()
+    public void Generator_ProtectedMemberAccessReferenceFromDerivedComponent_ExpandsAndCompiles()
     {
         var result = CompilationTestHost.RunGenerator(
             ("WidgetBase.cs", """
@@ -1332,7 +1334,7 @@ public sealed class GeneratorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void ComposableGenericTypeAndExtensionMethodQualifyInUsinglessOutput()
+    public void Generator_ComposableGenericTypeAndExtensionMethod_QualifyInUsinglessOutput()
     {
         const string source = """
             using BlazorCompose;
@@ -1366,7 +1368,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ComposableUnqualifiedGenericStaticMethodAndGenericTypeQualifyInUsinglessOutput()
+    public void Generator_ComposableUnqualifiedGenericStaticMethodAndGenericType_QualifyInUsinglessOutput()
     {
         const string source = """
             using BlazorCompose;
@@ -1402,7 +1404,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ComponentBodyGenericTypeAndExtensionMethodQualifyAndCompile()
+    public void Generator_ComponentBodyGenericTypeAndExtensionMethod_QualifyAndCompile()
     {
         const string source = """
             using BlazorCompose;
@@ -1429,7 +1431,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ComposableExtensionMethodWithUnnameableTypeArgumentReportsBC1002()
+    public void Generator_ComposableExtensionMethodWithUnnameableTypeArgument_ReportsBC1002()
     {
         const string source = """
             using BlazorCompose;
@@ -1466,7 +1468,7 @@ public sealed class GeneratorTests
     [InlineData("out int value")]
     [InlineData("in int value")]
     [InlineData("ref readonly int value")]
-    public void ByReferenceComposableParameterReportsBC1002AndGeneratesNoInvalidOutput(string parameter)
+    public void Generator_ByReferenceComposableParameter_ReportsBC1002AndEmitsNoInvalidOutput(string parameter)
     {
         var source = $$"""
             using BlazorCompose;
@@ -1501,7 +1503,7 @@ public sealed class GeneratorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void CrossNamespaceRelativeTypeReferenceQualifiesAndCompiles()
+    public void Generator_CrossNamespaceRelativeTypeReference_QualifiesAndCompiles()
     {
         var result = CompilationTestHost.RunGenerator(
             ("Widgets.cs", """
@@ -1563,7 +1565,7 @@ public sealed class GeneratorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void ComponentBodyWithUnnormalizableExtensionReceiverReportsBC1002AndGeneratesNoSource()
+    public void Generator_ComponentBodyWithUnnormalizableExtensionReceiver_ReportsBC1002AndEmitsNoSource()
     {
         const string source = """
             using BlazorCompose;
@@ -1603,7 +1605,7 @@ public sealed class GeneratorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void ComposableInGenericContainingTypeWithTypeParameterReportsBC1002AndGeneratesNoSource()
+    public void Generator_ComposableInGenericContainingTypeWithTypeParameter_ReportsBC1002AndEmitsNoSource()
     {
         var result = CompilationTestHost.RunGenerator(
             ("Widgets.cs", """
@@ -1640,7 +1642,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ComposableInGenericContainingTypeReferencingTypeParameterReportsBC1002AndGeneratesNoSource()
+    public void Generator_ComposableInGenericContainingTypeReferencingTypeParameter_ReportsBC1002AndEmitsNoSource()
     {
         var result = CompilationTestHost.RunGenerator(
             ("Widgets.cs", """
@@ -1673,7 +1675,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ComposableInGenericEnclosingTypeReportsBC1002AndGeneratesNoSource()
+    public void Generator_ComposableInGenericEnclosingType_ReportsBC1002AndEmitsNoSource()
     {
         var result = CompilationTestHost.RunGenerator(
             ("Widgets.cs", """
@@ -1714,7 +1716,7 @@ public sealed class GeneratorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void ProtectedBaseMemberReferencedFromHelperTypeExpandsIntoDerivedComponent()
+    public void Generator_ProtectedBaseMemberReferencedFromHelperType_ExpandsIntoDerivedComponent()
     {
         var result = CompilationTestHost.RunGenerator(
             ("WidgetBase.cs", """
@@ -1760,7 +1762,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void ProtectedBaseMemberReferencedFromHelperTypeIntoUnrelatedComponentReportsBC1002()
+    public void Generator_ProtectedBaseMemberReferencedFromHelperTypeIntoUnrelatedComponent_ReportsBC1002()
     {
         var result = CompilationTestHost.RunGenerator(
             ("WidgetBase.cs", """
