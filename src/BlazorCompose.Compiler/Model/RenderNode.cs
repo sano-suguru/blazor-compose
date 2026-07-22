@@ -18,11 +18,7 @@ internal sealed record ButtonNode(
 /// <summary>Represents a <c>VStack(children…)</c> call that emits an HTML <c>div</c> wrapper.</summary>
 internal sealed record VStackNode(EquatableArray<RenderNode> Children) : RenderNode;
 
-/// <summary>
-/// Represents an <c>If(condition, then, otherwise)</c> call.
-/// Allocation and emission are implemented in Task 5; the type is defined here so that the model
-/// hierarchy is complete.
-/// </summary>
+/// <summary>Represents an <c>If(condition, then, otherwise)</c> call with an optional else branch.</summary>
 internal sealed record IfNode(ExpressionTemplate ConditionExpression, RenderNode Then, RenderNode? Otherwise) : RenderNode;
 
 internal sealed record LocalBinding(

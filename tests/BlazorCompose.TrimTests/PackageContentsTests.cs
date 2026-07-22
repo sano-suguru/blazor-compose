@@ -15,7 +15,8 @@ public sealed class PackageContentsTests
     private static readonly string[] ExpectedPayloadFiles =
     [
         "analyzers/dotnet/cs/BlazorCompose.Compiler.dll",
-        "lib/net10.0/BlazorCompose.Runtime.dll"
+        "lib/net10.0/BlazorCompose.Runtime.dll",
+        "lib/net10.0/BlazorCompose.Runtime.xml"
     ];
 
     [Fact]

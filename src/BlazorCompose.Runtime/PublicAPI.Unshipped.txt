@@ -10,6 +10,6 @@ BlazorCompose.UI
 static BlazorCompose.UI.Button(string! label, System.Action! onClick) -> BlazorCompose.View
 static BlazorCompose.UI.If(bool condition, System.Func<BlazorCompose.View>! then, System.Func<BlazorCompose.View>? otherwise = null) -> BlazorCompose.View
 static BlazorCompose.UI.Text(string! content) -> BlazorCompose.View
-static BlazorCompose.UI.VStack(params BlazorCompose.View[]! children) -> BlazorCompose.View
+static BlazorCompose.UI.VStack(params System.ReadOnlySpan<BlazorCompose.View> children) -> BlazorCompose.View
 BlazorCompose.View
 BlazorCompose.View.View() -> void

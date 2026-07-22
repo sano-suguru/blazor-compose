@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 
 namespace BlazorCompose.Compiler.Analysis;
 
@@ -51,8 +52,8 @@ internal sealed class ComposableRegistry : IEquatable<ComposableRegistry>
     }
 
     /// <summary>Attempts to resolve a source-declared entry by its stable method key.</summary>
-    public bool TryGet(string methodKey, out ComposableDefinitionEntry entry) =>
-        _byMethodKey.TryGetValue(methodKey, out entry!);
+    public bool TryGet(string methodKey, [MaybeNullWhen(false)] out ComposableDefinitionEntry entry) =>
+        _byMethodKey.TryGetValue(methodKey, out entry);
 
     public bool Equals(ComposableRegistry? other) =>
         other is not null && Entries.Equals(other.Entries);
