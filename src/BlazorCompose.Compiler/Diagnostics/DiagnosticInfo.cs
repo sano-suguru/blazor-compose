@@ -18,31 +18,28 @@ internal sealed record DiagnosticInfo(
     LinePositionSpan LineSpan,
     EquatableArray<string> MessageArguments)
 {
-    /// <summary>Captures a <see cref="DiagnosticInfo"/> from a live <see cref="Location"/>.</summary>
+    /// <summary>Captures a <see cref="DiagnosticInfo"/> from a live <see cref="Location"/> and a descriptor.</summary>
     public static DiagnosticInfo Create(
-        string id,
+        DiagnosticDescriptor descriptor,
         Location location,
         ImmutableArray<string> messageArguments)
     {
         var lineSpan = location.GetLineSpan();
         return new DiagnosticInfo(
-            id,
+            descriptor.Id,
             lineSpan.Path ?? string.Empty,
             location.SourceSpan,
             lineSpan.Span,
             messageArguments);
     }
 
-    /// <summary>
-    /// Reconstructs a <see cref="Diagnostic"/> for <c>RegisterSourceOutput</c> using the captured
-    /// coordinates and the supplied descriptor (matched by <see cref="Id"/> at the call site).
-    /// </summary>
-    public Diagnostic ToDiagnostic(DiagnosticDescriptor descriptor)
+    /// <summary>True when this diagnostic's descriptor has <see cref="DiagnosticSeverity.Error"/> default severity.</summary>
+    public bool IsError => DiagnosticDescriptors.ById(Id).DefaultSeverity == DiagnosticSeverity.Error;
+
+    /// <summary>Reconstructs a <see cref="Diagnostic"/>, resolving the descriptor from <see cref="Id"/>.</summary>
+    public Diagnostic ToDiagnostic()
     {
         var location = Location.Create(FilePath, Span, LineSpan);
-        return Diagnostic.Create(descriptor, location, MessageArguments.ToArray<object?>());
+        return Diagnostic.Create(DiagnosticDescriptors.ById(Id), location, MessageArguments.ToArray<object?>());
     }
-
-    /// <summary>Reconstructs a <see cref="Diagnostic"/> resolving the descriptor from <see cref="Id"/>.</summary>
-    public Diagnostic ToDiagnostic() => ToDiagnostic(DiagnosticDescriptors.ById(Id));
 }

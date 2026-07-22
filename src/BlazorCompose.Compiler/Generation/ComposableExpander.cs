@@ -154,7 +154,7 @@ internal static class ComposableExpander
                     if (!IsKeyableRoot(content))
                     {
                         diagnostics.Add(DiagnosticInfo.Create(
-                            DiagnosticDescriptors.BC3003.Id,
+                            DiagnosticDescriptors.BC3003,
                             forEach.Location.ToLocation(),
                             []));
                         return null;
@@ -353,7 +353,7 @@ internal static class ComposableExpander
 
     private static DiagnosticInfo CreateDiagnostic(ComposableCallTemplateNode call, string reason) =>
         DiagnosticInfo.Create(
-            DiagnosticDescriptors.BC1002.Id,
+            DiagnosticDescriptors.BC1002,
             call.Location.ToLocation(),
             [call.DisplayName, reason]);
 }

@@ -190,7 +190,7 @@ internal static class ComposableDefinitionFactory
         string displayName,
         string reason) =>
         DiagnosticInfo.Create(
-            DiagnosticDescriptors.BC1002.Id,
+            DiagnosticDescriptors.BC1002,
             declaration.Identifier.GetLocation(),
             [displayName, reason]);
 

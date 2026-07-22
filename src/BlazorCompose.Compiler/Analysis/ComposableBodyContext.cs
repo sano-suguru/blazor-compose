@@ -110,7 +110,7 @@ internal sealed class ComposableBodyContext
             return;
 
         Diagnostics.Add(DiagnosticInfo.Create(
-            DiagnosticDescriptors.BC1002.Id,
+            DiagnosticDescriptors.BC1002,
             location,
             [MethodDisplayName, reason]));
     }

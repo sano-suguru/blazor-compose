@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Reflection;
 using Microsoft.CodeAnalysis;
 
 namespace BlazorCompose.Compiler.Diagnostics;
@@ -87,14 +91,57 @@ internal static class DiagnosticDescriptors
             "there is no frame to key, so the required key cannot be applied. Wrap the content in a " +
             "container element such as VStack(...).");
 
+    /// <summary>
+    /// BC1003: A component <c>Body</c> reached the model stage but could not be translated to a RenderBody
+    /// (no template, and no other actionable diagnostic was produced). Explains the CS0534 that the abstract
+    /// RenderBody would otherwise raise on its own. Transitional: its firing condition shrinks once the
+    /// Opaque/Transplantable fallback paths are implemented.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BC1003 = new(
+        id: "BC1003",
+        title: "Component Body could not be translated",
+        messageFormat: "Component '{0}' Body could not be translated to a RenderBody; it uses a construct that is not statically analyzable",
+        category: "BlazorCompose",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description:
+            "The Body expression could not be classified into the statically sequenceable subset and no " +
+            "runtime fallback exists yet, so no RenderBody is generated. Use the supported factories and " +
+            "combinators, or an inline expression lambda, so the body can be analyzed.");
+
+    /// <summary>
+    /// BC3004: A <c>ForEach</c> content or key is not an inline expression lambda (for example a block-bodied
+    /// lambda or a method group), so it cannot be statically analyzed. Transitional: narrows once the
+    /// Transplantable/Opaque paths support such content.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BC3004 = new(
+        id: "BC3004",
+        title: "ForEach content must be an inline expression lambda",
+        messageFormat: "ForEach content and key must be inline expression lambdas so they can be statically analyzed; wrap the call in a lambda such as x => Wrapper(x)",
+        category: "BlazorCompose",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description:
+            "A ForEach content or key selector must be an inline expression lambda (item => ...). A " +
+            "block-bodied lambda or a method group cannot be statically sequenced. Rewrite it as an inline " +
+            "expression lambda, wrapping any helper call as x => Helper(x).");
+
+    /// <summary>
+    /// Every declared descriptor, discovered reflectively from this type's public static
+    /// <see cref="DiagnosticDescriptor"/> fields so a newly added descriptor registers automatically and
+    /// <see cref="ById"/> cannot drift out of sync. Declared after the descriptor fields so their static
+    /// initializers have already run when this map is built (static field initializers run in textual order).
+    /// </summary>
+    private static readonly ImmutableDictionary<string, DiagnosticDescriptor> ByIdMap =
+        typeof(DiagnosticDescriptors)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(static field => field.FieldType == typeof(DiagnosticDescriptor))
+            .Select(static field => (DiagnosticDescriptor)field.GetValue(null)!)
+            .ToImmutableDictionary(static descriptor => descriptor.Id, StringComparer.Ordinal);
+
     /// <summary>Resolves a captured diagnostic <paramref name="id"/> to its descriptor.</summary>
-    public static DiagnosticDescriptor ById(string id) => id switch
-    {
-        "BC1001" => BC1001,
-        "BC1002" => BC1002,
-        "BC3001" => BC3001,
-        "BC3002" => BC3002,
-        "BC3003" => BC3003,
-        _ => throw new System.ArgumentOutOfRangeException(nameof(id), id, "Unknown BlazorCompose diagnostic id."),
-    };
+    public static DiagnosticDescriptor ById(string id) =>
+        ByIdMap.TryGetValue(id, out var descriptor)
+            ? descriptor
+            : throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown BlazorCompose diagnostic id.");
 }
