@@ -68,6 +68,25 @@ internal static class DiagnosticDescriptors
             "per-row state across insertion, removal, and reordering. A key that ignores the item " +
             "(a constant, an external index, or another list's item) forces full re-rendering.");
 
+    /// <summary>
+    /// BC3003: A <c>ForEach</c> content template's root is not a single element or component, so its key
+    /// has no frame to attach to (Blazor's <c>SetKey</c> keys the currently open element/component frame).
+    /// The required-key contract cannot be honored, so emission is suppressed. Mirrors Razor, where
+    /// <c>@key</c> cannot be applied to an <c>@if</c>; wrap the content in a container element instead.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BC3003 = new(
+        id: "BC3003",
+        title: "ForEach content must be a single element or component",
+        messageFormat: "ForEach content must be a single element or component so its key can be applied; wrap it in a container such as VStack(...)",
+        category: "BlazorCompose",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description:
+            "A ForEach key is applied to the content's root element or component frame. When the content " +
+            "root is a region (a bare If or nested ForEach, or a composable whose body is region-rooted) " +
+            "there is no frame to key, so the required key cannot be applied. Wrap the content in a " +
+            "container element such as VStack(...).");
+
     /// <summary>Resolves a captured diagnostic <paramref name="id"/> to its descriptor.</summary>
     public static DiagnosticDescriptor ById(string id) => id switch
     {
@@ -75,6 +94,7 @@ internal static class DiagnosticDescriptors
         "BC1002" => BC1002,
         "BC3001" => BC3001,
         "BC3002" => BC3002,
+        "BC3003" => BC3003,
         _ => throw new System.ArgumentOutOfRangeException(nameof(id), id, "Unknown BlazorCompose diagnostic id."),
     };
 }

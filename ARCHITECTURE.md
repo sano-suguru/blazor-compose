@@ -218,8 +218,8 @@ ForEach(_items, key: t => t.Id, content: item =>
 __b.OpenRegion(k);
 foreach (var item in _items)
 {
-    __b.SetKey(item.Id);
-    __b.OpenElement(k+1, "div");                        // HStack: seq ∈ [k+1, k+1+W(content))
+    __b.OpenElement(k+1, "div");                        // HStack (content の根要素): seq ∈ [k+1, k+1+W(content))
+    __b.SetKey(item.Id);                                // ← 根要素を開いた「直後」に付ける
     __b.OpenElement(k+2, "input");                      // CheckBox
     __b.AddAttribute(k+3, "onchange", /* v => item.Done = v */);
     __b.CloseElement();
@@ -228,6 +228,8 @@ foreach (var item in _items)
 }
 __b.CloseRegion();
 ```
+
+`SetKey` は Blazor の `RenderTreeBuilder` において「現在開いている要素/コンポーネントフレーム」にキーを付与します(Razor の `@key` と同型)。したがってキーは `content` の**根要素/コンポーネントを開いた直後**に出さなければならず、`OpenElement` の前(親がリージョンの状態)で呼ぶと実行時に `InvalidOperationException: Cannot set a key on a frame of type Region.` となります。この帰結として、`ForEach` の `content` は**単一の要素またはコンポーネントを根に持つ**必要があります(キーの置き場が要素/コンポーネントに限られるため)。`content` の根がリージョンになる形(裸の `if`/`ForEach`/`switch` 等)はキーを適用できず、診断 BC3003(Error)で通知します。入れ子のキー付きリストは内側ループを容器要素で包みます(例: `content: o => VStack(ForEach(o.Items, …))`)。これは Razor で `@if` に直接 `@key` を付けられず要素で包むのと同じ制約です。
 
 入力が `[A, B, C]` から先頭挿入で `[X, A, B, C]` へ変異した場合の出力パッチを追います。テンプレートのシーケンス番号は全反復で同一であり、識別はキーが担うため、Blazorはキー `A, B, C` を既存フレームへ一致させ(行の状態とDOMサブツリーを保持)、`X` の1行のみを挿入します。仮にキーがインデックス由来であれば、位置0を「A→X の変更」、位置1を「B→A の変更」…と誤認し、全行を書き換えて各行のローカル状態(入力中のチェックボックスのフォーカス等)を失います。キーが「データ同一性」を、シーケンスが「テンプレート位置」を分担することが、この最小パッチと状態保持を同時に成立させます。
 
@@ -389,6 +391,7 @@ public closed union ViewNode
 | BC2001 | Info    | Opaque構文を検出。動的リージョンへ縮退し、当該領域の静的差分最適化が失われる          |
 | BC3001 | Error   | 現行実装では `Body` 本体内での状態変更(単一方向データフロー違反)。初期検出範囲: コンポーネントインスタンスメンバーへの直接書き込み(代入/複合代入/インクリメント/デクリメント)。`Button` onClickラムダ(遅延イベントハンドラ)は除外。任意の副作用の完全検出は保証しない。`[Composable]` 本体への適用は将来拡張候補 |
 | BC3002 | Warning | `ForEach` の `key` セレクタが要素の恒等性を保証しない可能性(インデックスベースキー等) |
+| BC3003 | Error   | `ForEach` の `content` が単一の要素/コンポーネントを根に持たず、キーを適用できない(根がリージョンになる裸の `if`/`ForEach` 等)。内側を容器要素で包む(例: `VStack(...)`)必要がある |
 
 ## 付録B: 検討した代替アーキテクチャと不採用理由
 

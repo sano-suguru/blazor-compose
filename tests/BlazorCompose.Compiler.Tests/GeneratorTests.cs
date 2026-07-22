@@ -295,6 +295,13 @@ public sealed class GeneratorTests
         Assert.Contains("__builder.OpenElement(4, \"span\");", generated);
         Assert.Contains("__builder.AddContent(5, \"footer\");", generated);
 
+        // SetKey must land on the content root's span frame — after OpenElement(2, "span"), never
+        // after OpenRegion(1). This is the regression guard for the Task-9 render-time defect.
+        int spanIdx = generated.IndexOf("__builder.OpenElement(2, \"span\");", System.StringComparison.Ordinal);
+        int keyIdx = generated.IndexOf("__builder.SetKey(", System.StringComparison.Ordinal);
+        Assert.True(spanIdx >= 0, "content root OpenElement should be emitted");
+        Assert.True(keyIdx > spanIdx, "SetKey must be emitted after the content root's OpenElement");
+
         CompilationTestHost.AssertOutputCompiles(result);
     }
 
@@ -313,8 +320,8 @@ public sealed class GeneratorTests
                 VStack(
                     Text(heading),
                     ForEach(columns, key: col => col.Id, content: col =>
-                        ForEach(col.Cards, key: card => card.Id, content: card =>
-                            Text($"{heading}:{col.Name}:{card.Title}"))));
+                        VStack(ForEach(col.Cards, key: card => card.Id, content: card =>
+                            Text($"{heading}:{col.Name}:{card.Title}")))));
 
             public sealed record Card(int Id, string Title);
             public sealed record Column(int Id, string Name, List<Card> Cards);
@@ -335,6 +342,33 @@ public sealed class GeneratorTests
         CompilationTestHost.AssertOutputCompiles(result);
         // No BC3002 (every key references its own item).
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3002");
+        // No BC3003: the outer content root is now a VStack (div), a keyable element frame.
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3003");
+    }
+
+    [Fact]
+    public void Generator_ForEachWithRegionRootedContent_ReportsBC3003()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<Group> _groups = new();
+                protected override BlazorCompose.View Body =>
+                    ForEach(_groups, key: g => g.Id, content: g =>
+                        ForEach(g.Items, key: i => i.Id, content: i => Text(i.Name)));
+                private sealed record Item(int Id, string Name);
+                private sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // The outer content root is a bare nested ForEach (region-rooted) — its key has no frame to
+        // attach to, so BC3003 fires and emission is suppressed.
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3003" && d.Severity == DiagnosticSeverity.Error);
+        Assert.Empty(result.GeneratedSources);
     }
 
     [Fact]
@@ -414,7 +448,7 @@ public sealed class GeneratorTests
                 private readonly List<Group> _groups = new();
                 protected override BlazorCompose.View Body =>
                     ForEach(_groups, key: g => g.Id, content: g =>
-                        ForEach(g.Items, key: i => g.Id, content: i => Text(i.Name)));
+                        VStack(ForEach(g.Items, key: i => g.Id, content: i => Text(i.Name))));
                 private sealed record Item(int Id, string Name);
                 private sealed record Group(int Id, List<Item> Items);
             }

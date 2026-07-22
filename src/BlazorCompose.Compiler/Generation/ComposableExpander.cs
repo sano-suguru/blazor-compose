@@ -148,6 +148,18 @@ internal static class ComposableExpander
                     if (content is null)
                         return null;
 
+                    // The key is applied to the content's root element/component frame. Region-rooted
+                    // content (a bare If/ForEach, or a composable whose expanded body is region-rooted)
+                    // has no keyable frame, so report BC3003 and suppress emission.
+                    if (!IsKeyableRoot(content))
+                    {
+                        diagnostics.Add(DiagnosticInfo.Create(
+                            DiagnosticDescriptors.BC3003.Id,
+                            forEach.Location.ToLocation(),
+                            []));
+                        return null;
+                    }
+
                     return new ForEachNode(source, key, content, loopVariableName);
                 }
 
@@ -321,6 +333,20 @@ internal static class ComposableExpander
         builder.Append(closingDisplayName);
         return builder.ToString();
     }
+
+    /// <summary>
+    /// Determines whether an expanded content node's root frame is a single element or component (and so
+    /// can carry a <c>SetKey</c>). <see cref="ExpansionNode"/> is transparent — its composable body's root
+    /// is the real frame — so it is unwrapped. Element/component-rooted nodes (<see cref="TextNode"/>,
+    /// <see cref="ButtonNode"/>, <see cref="VStackNode"/>) are keyable; region-rooted nodes
+    /// (<see cref="IfNode"/>, <see cref="ForEachNode"/>) are not.
+    /// </summary>
+    private static bool IsKeyableRoot(RenderNode node) => node switch
+    {
+        ExpansionNode expansion => IsKeyableRoot(expansion.Body),
+        TextNode or ButtonNode or VStackNode => true,
+        _ => false,
+    };
 
     private static string CreateLocalName(int callPreorderOrdinal, int parameterOrdinal) =>
         $"__bc_arg_{callPreorderOrdinal}_{parameterOrdinal}";
