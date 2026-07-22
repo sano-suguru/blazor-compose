@@ -42,4 +42,18 @@ public sealed class RenderingTests : BunitContext
         cut.MarkupMatches("<div><span>Count: 1</span><button>Increment</button></div>");
         Assert.Equal(2, cut.Instance.ArgumentEvaluations);
     }
+
+    [Fact]
+    public void KeyedList_WhenRotateClicked_RerendersRowsInNewOrder()
+    {
+        var cut = Render<KeyedListComponent>();
+
+        cut.MarkupMatches(
+            "<div><span>one</span><span>two</span><span>three</span><button>Rotate</button></div>");
+
+        cut.Find("button").Click();
+
+        cut.MarkupMatches(
+            "<div><span>two</span><span>three</span><span>one</span><button>Rotate</button></div>");
+    }
 }
