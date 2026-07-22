@@ -3,8 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+  # No base-branch filter: run on every pull request, including stacked PRs whose
+  # base is another feature branch (a `branches:` filter matches the PR base, so
+  # `[main]` would skip stacked PRs and force a retarget/reopen to trigger CI).
   pull_request:
-    branches: [main]
+
+# Cancel superseded runs for the same branch/PR so stacked-PR churn does not pile up.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
