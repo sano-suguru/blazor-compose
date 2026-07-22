@@ -267,24 +267,25 @@ public sealed class IncrementalGeneratorTests
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation2, out _, out _);
         var run2 = driver.GetRunResult();
 
-        // The KnownSymbols fingerprint must have changed, so the downstream pipeline must
-        // NOT incorrectly cache the old component model.
+        // The UI API changed, so the syntax-provider transform must re-analyze each candidate against
+        // the new compilation (resolving BlazorCompose.UI symbols transiently) and the downstream
+        // pipeline must NOT incorrectly cache the old component model.
         var trackedSteps = run2.Results[0].TrackedSteps;
 
-        // Verify KnownSymbols was recomputed (Modified or New)
-        Assert.True(trackedSteps.ContainsKey("KnownSymbols"),
-            "Expected tracked step 'KnownSymbols'");
-        var knownSymbolsOutputs = trackedSteps["KnownSymbols"]
+        // Verify the component analysis was recomputed (Modified or New): Text(string) no longer
+        // resolves, so the analyzed template changes to a model-less result.
+        Assert.True(trackedSteps.ContainsKey("ComponentAnalysis"),
+            "Expected tracked step 'ComponentAnalysis'");
+        var analysisOutputs = trackedSteps["ComponentAnalysis"]
             .SelectMany(s => s.Outputs).ToImmutableArray();
-        Assert.All(knownSymbolsOutputs, output =>
+        Assert.All(analysisOutputs, output =>
             Assert.True(
                 output.Reason is IncrementalStepRunReason.Modified or IncrementalStepRunReason.New,
-                $"Expected KnownSymbols Modified/New but got {output.Reason}"));
+                $"Expected ComponentAnalysis Modified/New but got {output.Reason}"));
 
         // The component model must NOT be reused (Cached) in Run 2 because Text(string) no longer
-        // matches (it now requires 2 params).  Stable non-component candidates (for example the
-        // in-source ComposeComponentBase declaration) may recompute to an equal model-less result and
-        // report Unchanged; the regression this guards against is a stale Cached reuse of the old model.
+        // matches (it now requires 2 params); the regression this guards against is a stale Cached
+        // reuse of the old model built against the previous UI API.
         if (trackedSteps.TryGetValue("ComponentModeling", out var modelingSteps))
         {
             var modelOutputs = modelingSteps.SelectMany(s => s.Outputs).ToImmutableArray();
@@ -297,6 +298,111 @@ public sealed class IncrementalGeneratorTests
         // The second run should produce NO generated sources because Text(string) no longer
         // resolves to a known single-param method.
         Assert.Empty(run2.Results[0].GeneratedSources);
+    }
+
+    [Fact]
+    public void IncrementalGenerator_WhenUnrelatedTreeChanges_KeepsGeneratingComponent()
+    {
+        // Regression guard for symbol provenance: editing an unrelated tree produces a new compilation.
+        // The component's Body analysis must re-resolve BlazorCompose.UI from that new compilation rather
+        // than reusing symbols from the previous one; otherwise a cross-compilation symbol comparison would
+        // silently stop recognizing Text/Button/VStack/If and drop the generated RenderBody on every
+        // incremental edit (visible under dotnet watch / the IDE, not a single-shot build).
+        const string componentSource = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+
+            namespace TestNs;
+
+            public partial class MyComponent : ComposeComponentBase
+            {
+                protected override View Body => Text("Hello");
+            }
+            """;
+
+        const string unrelatedV1 = """
+            namespace Other;
+
+            public class Unrelated
+            {
+                public int Value => 1;
+            }
+            """;
+
+        const string unrelatedV2 = """
+            namespace Other;
+
+            public class Unrelated
+            {
+                public int Value => 2;
+            }
+            """;
+
+        const string runtimeSource = """
+            namespace BlazorCompose
+            {
+                public struct View { }
+                public abstract class ComposeComponentBase : Microsoft.AspNetCore.Components.ComponentBase
+                {
+                    protected abstract View Body { get; }
+                }
+                public static class UI
+                {
+                    public static View Text(string content) => default;
+                }
+            }
+            """;
+
+        var runtimeTree = CSharpSyntaxTree.ParseText(
+            runtimeSource,
+            CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14),
+            path: "Runtime.cs");
+        var componentTree = CSharpSyntaxTree.ParseText(
+            componentSource,
+            CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14),
+            path: "MyComponent.cs");
+        var unrelatedTreeV1 = CSharpSyntaxTree.ParseText(
+            unrelatedV1,
+            CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14),
+            path: "Unrelated.cs");
+
+        var compilation1 = CreateCompilationWithoutRuntime(runtimeTree, componentTree, unrelatedTreeV1);
+
+        var driverOptions = new GeneratorDriverOptions(
+            disabledOutputs: default,
+            trackIncrementalGeneratorSteps: true);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            generators: [new BlazorComposeGenerator().AsSourceGenerator()],
+            driverOptions: driverOptions);
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation1, out _, out _);
+        var run1Source = Assert.Single(driver.GetRunResult().Results[0].GeneratedSources);
+
+        // Edit only the unrelated tree.
+        var unrelatedTreeV2 = CSharpSyntaxTree.ParseText(
+            unrelatedV2,
+            CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14),
+            path: "Unrelated.cs");
+        var compilation2 = compilation1.ReplaceSyntaxTree(unrelatedTreeV1, unrelatedTreeV2);
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation2, out _, out _);
+        var run2 = driver.GetRunResult();
+
+        // The component must still be generated, with identical output, after the unrelated edit.
+        var run2Source = Assert.Single(run2.Results[0].GeneratedSources);
+        Assert.Equal(
+            run1Source.SourceText.ToString(),
+            run2Source.SourceText.ToString());
+
+        // Its model was reused, not recomputed to a different value.
+        if (run2.Results[0].TrackedSteps.TryGetValue("ComponentModeling", out var modelingSteps))
+        {
+            var reasons = modelingSteps.SelectMany(s => s.Outputs).Select(o => o.Reason).ToImmutableArray();
+            Assert.All(reasons, reason =>
+                Assert.True(
+                    reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged,
+                    $"Expected component model reuse after unrelated edit but got {reason}"));
+        }
     }
 
     // ---------------------------------------------------------------------------

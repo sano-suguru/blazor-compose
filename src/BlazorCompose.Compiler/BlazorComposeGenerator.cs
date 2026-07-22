@@ -15,17 +15,15 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // Resolve the factory-method symbols once per compilation so incremental rebuilds that
-        // change only component syntax do not re-walk the BlazorCompose.UI type members.
-        var knownSymbols = context.CompilationProvider
-            .Select(static (compilation, _) => KnownSymbols.TryCreate(compilation))
-            .WithTrackingName("KnownSymbols");
-
-        var syntaxCandidates = context.SyntaxProvider
+        // Analyze each candidate component inside the syntax transform: KnownSymbols is resolved
+        // transiently from the candidate's own compilation and the Body is classified into a symbol-free
+        // template here, so no SemanticModel/ISymbol/Compilation ever flows into the cached pipeline.
+        var analyses = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => node is ClassDeclarationSyntax { BaseList: not null },
-                static (ctx, _) => ctx)
-            .WithTrackingName("CandidateDiscovery");
+                static (ctx, cancellationToken) => ComponentModelFactory.Analyze(ctx, cancellationToken))
+            .Where(static analysis => analysis is not null)
+            .WithTrackingName("ComponentAnalysis");
 
         // Discover [Composable] definitions.  Definition-side SSC analysis resolves KnownSymbols
         // transiently from the definition's compilation so the transform output stays value-equal and
@@ -59,19 +57,12 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
             .Select(static (entries, _) => ComposableRegistry.Create(entries))
             .WithTrackingName("ComposableRegistry");
 
-        // Model each candidate component against the registry so composable calls expand statically.
-        // The tracking name observes the value-equal ComponentModelResult stream so incremental caching
-        // tests can identify each component (or diagnostic-only result) by value, and so an unchanged
-        // rerun is Cached/Unchanged even on the diagnostic branch.
-        var modelResults = syntaxCandidates
-            .Combine(knownSymbols)
+        // Expand each analyzed component against the registry as a pure value transform.  Both inputs are
+        // value-equal, so an unchanged rerun is Cached/Unchanged even on the diagnostic branch, and a
+        // change to the UI API surface re-runs the transform above and correctly invalidates here.
+        var modelResults = analyses
             .Combine(registry)
-            .Select(static (input, cancellationToken) =>
-                ComponentModelFactory.TryCreate(
-                    input.Left.Left,
-                    input.Left.Right,
-                    input.Right,
-                    cancellationToken))
+            .Select(static (input, _) => ComponentModelFactory.Expand(input.Left!, input.Right))
             .WithTrackingName("ComponentModeling");
 
         // Report model (call-site expansion) diagnostics separately, reconstructing Roslyn diagnostics
