@@ -60,7 +60,7 @@ public static class CompilationTestHost
             trackIncrementalGeneratorSteps: true);
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
-            generators: new[] { new BlazorComposeGenerator().AsSourceGenerator() },
+            generators: [new BlazorComposeGenerator().AsSourceGenerator()],
             driverOptions: driverOptions);
 
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
@@ -74,7 +74,7 @@ public static class CompilationTestHost
         IReadOnlyDictionary<string, ImmutableArray<IncrementalGeneratorRunStep>> trackedSteps =
             runResult.Results.Length > 0
                 ? runResult.Results[0].TrackedSteps
-                : ImmutableDictionary<string, ImmutableArray<IncrementalGeneratorRunStep>>.Empty;
+                : [];
 
         return new GeneratorRunResult(driver, outputCompilation, generatedSources, trackedSteps, diagnostics);
     }
@@ -114,7 +114,7 @@ public static class CompilationTestHost
 
         var compilation = CSharpCompilation.Create(
             assemblyName: assemblyName,
-            syntaxTrees: new[] { syntaxTree },
+            syntaxTrees: [syntaxTree],
             references: BuildMetadataReferences(),
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
@@ -163,7 +163,7 @@ public static class CompilationTestHost
         var compilation = CreateCompilation(source);
         var analyzer = new T();
         var compilationWithAnalyzers = compilation.WithAnalyzers(
-            ImmutableArray.Create<DiagnosticAnalyzer>(analyzer));
+            [analyzer]);
         return await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync();
     }
 
@@ -211,6 +211,6 @@ public static class CompilationTestHost
         // Microsoft.AspNetCore.Components (provides ComponentBase, RenderTreeBuilder)
         Add(typeof(ComponentBase).Assembly.Location);
 
-        return references.ToImmutableArray();
+        return [.. references];
     }
 }

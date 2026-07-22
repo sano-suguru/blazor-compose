@@ -63,7 +63,7 @@ internal static class ExpressionTemplateFactory
             {
                 replacements.Add(new Replacement(
                     invocation.Span,
-                    ImmutableArray.Create<ExpressionSegment>(nameofSegment)));
+                    [nameofSegment]));
                 replacedSpans.Add(invocation.Span);
                 continue;
             }
@@ -174,7 +174,7 @@ internal static class ExpressionTemplateFactory
         TextSpan span,
         ExpressionSegment segment)
     {
-        replacements.Add(new Replacement(span, ImmutableArray.Create(segment)));
+        replacements.Add(new Replacement(span, [segment]));
         replacedSpans.Add(span);
     }
 
@@ -378,7 +378,7 @@ internal static class ExpressionTemplateFactory
         ComposableBodyContext context,
         out ImmutableArray<ExpressionSegment> segments)
     {
-        segments = ImmutableArray<ExpressionSegment>.Empty;
+        segments = [];
 
         // Only 'receiver.Method(...)' can become a static call; a null-conditional 'receiver?.Method(...)'
         // would change short-circuit semantics, so it is reported rather than silently rewritten.

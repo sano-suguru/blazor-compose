@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using BlazorCompose;
 using Microsoft.AspNetCore.Components.Rendering;
 
 namespace BlazorCompose.Runtime.Tests;
 
-[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class ComposeComponentBaseTests
 {
     [Fact]

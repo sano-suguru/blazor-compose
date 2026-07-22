@@ -10,6 +10,7 @@
     <Description>Prerelease runtime and compiler package for the current BlazorCompose production-foundation vertical slice.</Description>
     <IsPackable>true</IsPackable>
     <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackCompilerAnalyzer</TargetsForTfmSpecificContentInPackage>
     <CompilerPackStagingDirectory>$(MSBuildThisFileDirectory)obj/compiler-pack/analyzers/dotnet/cs</CompilerPackStagingDirectory>

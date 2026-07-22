@@ -1,4 +1,3 @@
-using BlazorCompose;
 using Microsoft.AspNetCore.Components;
 using static BlazorCompose.UI;
 

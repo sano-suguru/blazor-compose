@@ -1,0 +1,17 @@
+<Project>
+
+  <!-- Chain to the repository-root Directory.Build.props so shared settings still apply. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Banned-API enforcement for repository-owned production code only. Guards the
+       no-reflection / trimming / AOT-safe contract that the runtime depends on.
+       Not applied to tests (which build MetadataReferences from assembly locations). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
+  </ItemGroup>
+
+</Project>

@@ -35,9 +35,9 @@ internal static class ComposableExpander
 
         var node = ExpandNode(
             root,
-            ImmutableArray<string>.Empty,
+            [],
             ref nextLogicalPreorderOrdinal,
-            ImmutableArray<string>.Empty,
+            [],
             registry,
             generatedTypeInheritanceKeys,
             diagnostics);
@@ -305,5 +305,5 @@ internal static class ComposableExpander
         DiagnosticInfo.Create(
             DiagnosticDescriptors.BC1002.Id,
             call.Location.ToLocation(),
-            ImmutableArray.Create(call.DisplayName, reason));
+            [call.DisplayName, reason]);
 }

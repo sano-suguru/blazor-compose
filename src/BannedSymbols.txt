@@ -1,0 +1,6 @@
+T:System.Reflection.Assembly;Runtime must stay reflection-free for trimming/AOT safety
+T:System.Reflection.MethodInfo;Runtime must stay reflection-free for trimming/AOT safety
+T:System.Reflection.PropertyInfo;Runtime must stay reflection-free for trimming/AOT safety
+M:System.Activator.CreateInstance;Use static construction, not reflective activation (trimming/AOT)
+T:System.Linq.Expressions.Expression;No runtime expression compilation on the SSC path
+M:System.Type.GetType(System.String);Name-based type resolution is trimming-unsafe

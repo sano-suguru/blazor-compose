@@ -10,7 +10,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace BlazorCompose.Compiler.Tests;
 
-[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class ComposableDefinitionTests
 {
     [Theory]
@@ -71,8 +70,8 @@ public sealed class ComposableDefinitionTests
         var high = new ComposableDefinitionEntry("K:b", "Beta", Definition: null, DeclarationDiagnosticReported: true);
         var low = new ComposableDefinitionEntry("K:a", "Alpha", Definition: null, DeclarationDiagnosticReported: true);
 
-        var registry = ComposableRegistry.Create(ImmutableArray.Create(high, low));
-        var reordered = ComposableRegistry.Create(ImmutableArray.Create(low, high));
+        var registry = ComposableRegistry.Create([high, low]);
+        var reordered = ComposableRegistry.Create([low, high]);
 
         Assert.Equal(registry, reordered);
         Assert.Equal(registry.GetHashCode(), reordered.GetHashCode());
@@ -92,7 +91,7 @@ public sealed class ComposableDefinitionTests
         var first = new ComposableDefinitionEntry("K", "First", Definition: null, DeclarationDiagnosticReported: true);
         var duplicate = new ComposableDefinitionEntry("K", "Second", Definition: null, DeclarationDiagnosticReported: true);
 
-        var registry = ComposableRegistry.Create(ImmutableArray.Create(first, duplicate));
+        var registry = ComposableRegistry.Create([first, duplicate]);
 
         var entry = Assert.Single(registry.Entries);
         Assert.Equal("First", entry.DisplayName);
@@ -234,7 +233,7 @@ public sealed class ComposableDefinitionTests
             default);
 
         var template = ExpressionTemplateFactory.Create(argument, context);
-        var code = template.Substitute(ImmutableArray.Create("__p0")).ToCode();
+        var code = template.Substitute(["__p0"]).ToCode();
 
         // nameof(name) depends on the parameter, so it collapses to its compile-time constant string;
         // the bare 'name' becomes the substituted hole.

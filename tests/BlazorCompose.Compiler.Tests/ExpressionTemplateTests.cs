@@ -1,22 +1,17 @@
 using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
 using BlazorCompose.Compiler;
 
 namespace BlazorCompose.Compiler.Tests;
 
-[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class ExpressionTemplateTests
 {
     [Fact]
     public void ExpressionTemplate_WhenSubstituted_ReplacesOnlyParameterHoles()
     {
         var template = ExpressionTemplate.Create(
-            ImmutableArray.Create<ExpressionSegment>(
-                new LiteralExpressionSegment("$\""),
-                new ParameterHoleExpressionSegment(0),
-                new LiteralExpressionSegment(" value\"")));
+            [new LiteralExpressionSegment("$\""), new ParameterHoleExpressionSegment(0), new LiteralExpressionSegment(" value\"")]);
 
-        var result = template.Substitute(ImmutableArray.Create("__bc_arg_1_0"));
+        var result = template.Substitute(["__bc_arg_1_0"]);
 
         Assert.Equal("$\"__bc_arg_1_0 value\"", result.ToCode());
     }
@@ -25,13 +20,9 @@ public sealed class ExpressionTemplateTests
     public void ExpressionTemplate_StructurallyEqualTemplates_CompareEqual()
     {
         var left = ExpressionTemplate.Create(
-            ImmutableArray.Create<ExpressionSegment>(
-                new LiteralExpressionSegment("prefix "),
-                new ParameterHoleExpressionSegment(1)));
+            [new LiteralExpressionSegment("prefix "), new ParameterHoleExpressionSegment(1)]);
         var right = ExpressionTemplate.Create(
-            ImmutableArray.Create<ExpressionSegment>(
-                new LiteralExpressionSegment("prefix "),
-                new ParameterHoleExpressionSegment(1)));
+            [new LiteralExpressionSegment("prefix "), new ParameterHoleExpressionSegment(1)]);
 
         Assert.Equal(left, right);
         Assert.Equal(left.GetHashCode(), right.GetHashCode());

@@ -28,10 +28,13 @@ namespace BlazorCompose.Compiler.Diagnostics;
 public sealed class RenderMutationAnalyzer : DiagnosticAnalyzer
 {
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(DiagnosticDescriptors.BC3001);
+        [DiagnosticDescriptors.BC3001];
 
     public override void Initialize(AnalysisContext context)
     {
+        if (context is null)
+            throw new ArgumentNullException(nameof(context));
+
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
 

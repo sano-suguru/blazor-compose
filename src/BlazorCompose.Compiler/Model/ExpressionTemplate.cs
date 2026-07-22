@@ -19,8 +19,7 @@ internal sealed record ExpressionTemplate
     public ImmutableArray<ExpressionSegment> Segments { get; }
 
     public static ExpressionTemplate Literal(string code) =>
-        new(ImmutableArray.Create<ExpressionSegment>(
-            new LiteralExpressionSegment(code)));
+        new([new LiteralExpressionSegment(code)]);
 
     public static ExpressionTemplate Create(ImmutableArray<ExpressionSegment> segments) =>
         new(segments);

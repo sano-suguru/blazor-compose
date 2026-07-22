@@ -12,7 +12,7 @@ namespace BlazorCompose.Compiler.Analysis;
 internal sealed class ComposableRegistry : IEquatable<ComposableRegistry>
 {
     public static readonly ComposableRegistry Empty =
-        new(ImmutableArray<ComposableDefinitionEntry>.Empty);
+        new([]);
 
     private readonly Dictionary<string, ComposableDefinitionEntry> _byMethodKey;
 

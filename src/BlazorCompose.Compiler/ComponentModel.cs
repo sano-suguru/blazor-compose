@@ -36,12 +36,12 @@ internal sealed record ComponentModelResult
 {
     /// <summary>A shared result carrying neither a model nor diagnostics.</summary>
     public static ComponentModelResult None { get; } =
-        new(null, ImmutableArray<DiagnosticInfo>.Empty);
+        new(null, []);
 
     public ComponentModelResult(ComponentModel? model, ImmutableArray<DiagnosticInfo> diagnostics)
     {
         Model = model;
-        Diagnostics = diagnostics.IsDefault ? ImmutableArray<DiagnosticInfo>.Empty : diagnostics;
+        Diagnostics = diagnostics.IsDefault ? [] : diagnostics;
     }
 
     public ComponentModel? Model { get; }

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
@@ -10,7 +9,6 @@ namespace BlazorCompose.Compiler.Tests;
 /// Verifies that direct state mutations in the Body rendering path are diagnosed,
 /// while mutations inside recognized deferred event handler lambdas are not.
 /// </summary>
-[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class RenderMutationAnalyzerTests
 {
     // -----------------------------------------------------------------------

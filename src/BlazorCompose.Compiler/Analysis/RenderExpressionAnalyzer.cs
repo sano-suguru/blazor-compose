@@ -23,9 +23,8 @@ internal static class RenderExpressionAnalyzer
         if (expression is not InvocationExpressionSyntax invocation)
             return null;
 
-        var method = context.SemanticModel
-            .GetSymbolInfo(invocation, context.CancellationToken).Symbol as IMethodSymbol;
-        if (method is null)
+        if (context.SemanticModel
+            .GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method)
             return null;
 
         var symbols = context.KnownSymbols;

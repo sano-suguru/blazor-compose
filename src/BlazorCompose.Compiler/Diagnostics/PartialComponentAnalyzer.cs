@@ -14,10 +14,13 @@ namespace BlazorCompose.Compiler.Diagnostics;
 public sealed class PartialComponentAnalyzer : DiagnosticAnalyzer
 {
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(DiagnosticDescriptors.BC1001);
+        [DiagnosticDescriptors.BC1001];
 
     public override void Initialize(AnalysisContext context)
     {
+        if (context is null)
+            throw new ArgumentNullException(nameof(context));
+
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
         context.RegisterSymbolAction(AnalyzeNamedType, SymbolKind.NamedType);
