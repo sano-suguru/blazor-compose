@@ -8,20 +8,17 @@ namespace BlazorCompose.Compiler.Analysis;
 /// <see cref="Entry"/> (always present, even for invalid declarations) and the declaration-time
 /// <see cref="Diagnostics"/> captured as symbol-free data.
 /// </summary>
-internal sealed record ComposableDiscoveryResult(
-    ComposableDefinitionEntry Entry,
-    ImmutableArray<DiagnosticInfo> Diagnostics)
+internal sealed record ComposableDiscoveryResult
 {
-    public bool Equals(ComposableDiscoveryResult? other) =>
-        other is not null
-        && Entry == other.Entry
-        && StructuralEquality.ArrayEquals(Diagnostics, other.Diagnostics);
-
-    public override int GetHashCode()
+    public ComposableDiscoveryResult(
+        ComposableDefinitionEntry entry,
+        ImmutableArray<DiagnosticInfo> diagnostics)
     {
-        var hash = 17;
-        hash = unchecked(hash * 31 + Entry.GetHashCode());
-        hash = unchecked(hash * 31 + StructuralEquality.ArrayHashCode(Diagnostics));
-        return hash;
+        Entry = entry;
+        Diagnostics = diagnostics;
     }
+
+    public ComposableDefinitionEntry Entry { get; }
+
+    public EquatableArray<DiagnosticInfo> Diagnostics { get; }
 }

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Text;
 
@@ -16,7 +15,7 @@ internal sealed record ExpressionTemplate
     private ExpressionTemplate(ImmutableArray<ExpressionSegment> segments)
         => Segments = segments;
 
-    public ImmutableArray<ExpressionSegment> Segments { get; }
+    public EquatableArray<ExpressionSegment> Segments { get; }
 
     public static ExpressionTemplate Literal(string code) =>
         new([new LiteralExpressionSegment(code)]);
@@ -59,17 +58,6 @@ internal sealed record ExpressionTemplate
         return builder.ToString();
     }
 
-    public bool Equals(ExpressionTemplate? other) =>
-        other is not null && StructuralEquals(Segments, other.Segments);
-
-    public override int GetHashCode()
-    {
-        var hash = 17;
-        foreach (var segment in Segments)
-            hash = unchecked(hash * 31 + segment.GetHashCode());
-        return hash;
-    }
-
     private static ImmutableArray<ExpressionSegment> CoalesceLiterals(
         ImmutableArray<ExpressionSegment> segments)
     {
@@ -97,25 +85,5 @@ internal sealed record ExpressionTemplate
             result.Add(new LiteralExpressionSegment(text.ToString()));
 
         return result.ToImmutable();
-    }
-
-    private static bool StructuralEquals(
-        ImmutableArray<ExpressionSegment> left,
-        ImmutableArray<ExpressionSegment> right)
-    {
-        if (left.Length != right.Length)
-            return false;
-
-        for (var index = 0; index < left.Length; index++)
-        {
-            if (!EqualityComparer<ExpressionSegment>.Default.Equals(
-                    left[index],
-                    right[index]))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

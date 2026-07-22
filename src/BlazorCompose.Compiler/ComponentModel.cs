@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using BlazorCompose.Compiler.Analysis;
 using BlazorCompose.Compiler.Diagnostics;
 
 namespace BlazorCompose.Compiler;
@@ -29,8 +27,9 @@ internal sealed record ComponentModel(
 /// <remarks>
 /// Diagnostics are captured as symbol-free <see cref="DiagnosticInfo"/> so the result stays value-equal
 /// across incremental runs; they are deliberately excluded from <see cref="ComponentModel"/> equality and
-/// reconstructed into Roslyn diagnostics only inside the source-output callback.  The no-diagnostic case is
-/// normalized to <see cref="ImmutableArray{T}.Empty"/> so equality never depends on a default array.
+/// reconstructed into Roslyn diagnostics only inside the source-output callback.  <see cref="Diagnostics"/>
+/// is an <see cref="EquatableArray{T}"/>, which treats a <c>default</c> array as equal to an empty one, so
+/// equality never depends on whether the no-diagnostic case is stored as <c>default</c> or empty.
 /// </remarks>
 internal sealed record ComponentModelResult
 {
@@ -41,23 +40,10 @@ internal sealed record ComponentModelResult
     public ComponentModelResult(ComponentModel? model, ImmutableArray<DiagnosticInfo> diagnostics)
     {
         Model = model;
-        Diagnostics = diagnostics.IsDefault ? [] : diagnostics;
+        Diagnostics = diagnostics;
     }
 
     public ComponentModel? Model { get; }
 
-    public ImmutableArray<DiagnosticInfo> Diagnostics { get; }
-
-    public bool Equals(ComponentModelResult? other) =>
-        other is not null
-        && EqualityComparer<ComponentModel?>.Default.Equals(Model, other.Model)
-        && StructuralEquality.ArrayEquals(Diagnostics, other.Diagnostics);
-
-    public override int GetHashCode()
-    {
-        var hash = 17;
-        hash = unchecked(hash * 31 + (Model?.GetHashCode() ?? 0));
-        hash = unchecked(hash * 31 + StructuralEquality.ArrayHashCode(Diagnostics));
-        return hash;
-    }
+    public EquatableArray<DiagnosticInfo> Diagnostics { get; }
 }

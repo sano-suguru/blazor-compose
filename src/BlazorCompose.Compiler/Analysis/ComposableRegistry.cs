@@ -27,7 +27,7 @@ internal sealed class ComposableRegistry : IEquatable<ComposableRegistry>
     }
 
     /// <summary>The registry entries in deterministic ascending <see cref="ComposableDefinitionEntry.MethodKey"/> order.</summary>
-    public ImmutableArray<ComposableDefinitionEntry> Entries { get; }
+    public EquatableArray<ComposableDefinitionEntry> Entries { get; }
 
     public static ComposableRegistry Create(ImmutableArray<ComposableDefinitionEntry> entries)
     {
@@ -55,9 +55,9 @@ internal sealed class ComposableRegistry : IEquatable<ComposableRegistry>
         _byMethodKey.TryGetValue(methodKey, out entry!);
 
     public bool Equals(ComposableRegistry? other) =>
-        other is not null && StructuralEquality.ArrayEquals(Entries, other.Entries);
+        other is not null && Entries.Equals(other.Entries);
 
     public override bool Equals(object? obj) => Equals(obj as ComposableRegistry);
 
-    public override int GetHashCode() => StructuralEquality.ArrayHashCode(Entries);
+    public override int GetHashCode() => Entries.GetHashCode();
 }
