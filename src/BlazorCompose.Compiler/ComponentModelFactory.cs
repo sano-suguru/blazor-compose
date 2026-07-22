@@ -9,48 +9,57 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace BlazorCompose.Compiler;
 
-/// <summary>Creates a <see cref="ComponentModelResult"/> from a syntax context for a candidate class node.</summary>
+/// <summary>
+/// Turns a candidate class node into an emittable component model in two symbol-free stages:
+/// <see cref="Analyze"/> (semantic, runs inside the syntax-provider transform) and
+/// <see cref="Expand"/> (a pure value transform combined with the composable registry).
+/// </summary>
 internal static class ComponentModelFactory
 {
     /// <summary>
-    /// Models <paramref name="syntaxContext"/> when it represents a partial class that directly or
-    /// indirectly inherits from <c>BlazorCompose.ComposeComponentBase</c>.  The <c>Body</c> expression is
-    /// analyzed into a template through <see cref="RenderExpressionAnalyzer"/> — the same SSC classifier
-    /// used for composable definitions — and then expanded through <see cref="ComposableExpander"/>.  The
-    /// returned result carries either a final <see cref="ComponentModel"/> or the call-site BC1002
-    /// diagnostics produced during expansion.
+    /// Analyzes <paramref name="syntaxContext"/> when it represents a partial class that directly or
+    /// indirectly inherits from <c>BlazorCompose.ComposeComponentBase</c>, resolving all symbols from the
+    /// context's own compilation and classifying the <c>Body</c> expression into a template.  Returns a
+    /// symbol-free <see cref="ComponentAnalysis"/> for every component candidate, or <see langword="null"/>
+    /// for a node that is not a generatable component (non-partial, nested, non-inheriting, or bodyless).
     /// </summary>
-    internal static ComponentModelResult TryCreate(
+    /// <remarks>
+    /// This method must run inside the syntax-provider transform, where the <see cref="SemanticModel"/> and
+    /// resolved symbols belong to the current compilation.  Its output carries no symbols, so the value that
+    /// flows onward stays equatable and cacheable across incremental runs.
+    /// </remarks>
+    internal static ComponentAnalysis? Analyze(
         GeneratorSyntaxContext syntaxContext,
-        KnownSymbols? knownSymbols,
-        ComposableRegistry registry,
         CancellationToken cancellationToken)
     {
         var classDeclaration = (ClassDeclarationSyntax)syntaxContext.Node;
 
         if (!classDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword))
-            return ComponentModelResult.None;
+            return null;
 
         var symbol = syntaxContext.SemanticModel.GetDeclaredSymbol(classDeclaration, cancellationToken);
         if (symbol is null)
-            return ComponentModelResult.None;
+            return null;
 
         // Nested classes require wrapping the generated code inside the outer class hierarchy;
         // that complexity is out of scope for this task.  Skip them so the generator does not
         // emit a structurally incorrect top-level partial class.
         if (symbol.ContainingType is not null)
-            return ComponentModelResult.None;
+            return null;
 
         if (!ComposeComponentBaseFacts.InheritsFromComposeComponentBase(symbol))
-            return ComponentModelResult.None;
+            return null;
 
-        // Without known symbols the Body cannot be analyzed; skip rather than emit empty source.
+        // Resolve the BlazorCompose.UI factory symbols only once the candidate is confirmed to be a
+        // component, so unrelated base-listed classes do not pay for the UI type lookup.  Resolution is
+        // transient to this compilation and never escapes into the cached pipeline.
+        var knownSymbols = KnownSymbols.TryCreate(syntaxContext.SemanticModel.Compilation);
         if (knownSymbols is null)
-            return ComponentModelResult.None;
+            return null;
 
         var bodyExpression = TryFindBodyExpression(classDeclaration);
         if (bodyExpression is null)
-            return ComponentModelResult.None;
+            return null;
 
         // Reuse the composable-definition analyzer so component bodies and composable bodies share a
         // single SSC classification.  The component body has no parameters, so no parameter holes exist;
@@ -66,32 +75,6 @@ internal static class ComponentModelFactory
 
         var template = RenderExpressionAnalyzer.Analyze(bodyExpression, bodyContext);
 
-        // Body normalization can record BC1002 for a reference that cannot exist in the using-less
-        // generated RenderBody (for example a null-conditional extension receiver that cannot be
-        // rewritten to a static call).  Surface those diagnostics and suppress emission instead of
-        // discarding them and emitting a broken RenderBody.
-        if (bodyContext.Diagnostics.Count > 0)
-            return new ComponentModelResult(null, bodyContext.Diagnostics.ToImmutable());
-
-        // An unrecognized or unsupported Body shape must not produce an empty RenderBody; returning a
-        // model-less result here causes CS0534 in the user's compilation, which is the correct failure
-        // signal until the Opaque/BC2001 path is implemented.
-        if (template is null)
-            return ComponentModelResult.None;
-
-        // Pass the generated component's inheritance chain (self first, then base types) so the expander
-        // can validate DerivedContainingType access requirements against real inheritance rather than a
-        // single containing-type key, while keeping the value model symbol-free.
-        var inheritanceKeys = BuildInheritanceKeys(symbol);
-        var expansion = ComposableExpander.Expand(template, registry, inheritanceKeys);
-
-        // Call-site expansion failures surface as BC1002; do not also emit a partial RenderBody.
-        if (!expansion.Diagnostics.IsDefaultOrEmpty)
-            return new ComponentModelResult(null, expansion.Diagnostics);
-
-        if (expansion.Node is null)
-            return ComponentModelResult.None;
-
         var namespaceName = symbol.ContainingNamespace is { IsGlobalNamespace: false } ns
             ? ns.ToDisplayString()
             : null;
@@ -102,10 +85,53 @@ internal static class ComponentModelFactory
             ? $"{namespaceName}.{symbol.MetadataName}.g.cs"
             : $"{symbol.MetadataName}.g.cs";
 
-        var model = new ComponentModel(
+        // Capture the inheritance chain (self first, then base types) as symbol-free keys so the expander
+        // can validate DerivedContainingType access requirements against real inheritance.
+        return new ComponentAnalysis(
             HintName: hintName,
             ClassName: symbol.Name,
             Namespace: namespaceName,
+            InheritanceKeys: BuildInheritanceKeys(symbol),
+            Template: template,
+            BodyDiagnostics: bodyContext.Diagnostics.ToImmutable());
+    }
+
+    /// <summary>
+    /// Expands a component's analyzed template against the composable <paramref name="registry"/> into a
+    /// final <see cref="ComponentModelResult"/>.  This is a pure function of value inputs, so it runs after
+    /// the registry combine without reintroducing symbols into the pipeline.
+    /// </summary>
+    internal static ComponentModelResult Expand(ComponentAnalysis analysis, ComposableRegistry registry)
+    {
+        // Body normalization can record BC1002 for a reference that cannot exist in the using-less
+        // generated RenderBody (for example a null-conditional extension receiver that cannot be
+        // rewritten to a static call).  Surface those diagnostics and suppress emission instead of
+        // discarding them and emitting a broken RenderBody.
+        if (!analysis.BodyDiagnostics.IsDefaultOrEmpty)
+            return new ComponentModelResult(null, analysis.BodyDiagnostics.AsImmutableArray());
+
+        // An unrecognized or unsupported Body shape must not produce an empty RenderBody; returning a
+        // model-less result here causes CS0534 in the user's compilation, which is the correct failure
+        // signal until the Opaque/BC2001 path is implemented.
+        if (analysis.Template is null)
+            return ComponentModelResult.None;
+
+        var expansion = ComposableExpander.Expand(
+            analysis.Template,
+            registry,
+            analysis.InheritanceKeys.AsImmutableArray());
+
+        // Call-site expansion failures surface as BC1002; do not also emit a partial RenderBody.
+        if (!expansion.Diagnostics.IsDefaultOrEmpty)
+            return new ComponentModelResult(null, expansion.Diagnostics);
+
+        if (expansion.Node is null)
+            return ComponentModelResult.None;
+
+        var model = new ComponentModel(
+            HintName: analysis.HintName,
+            ClassName: analysis.ClassName,
+            Namespace: analysis.Namespace,
             RootNode: expansion.Node);
 
         return new ComponentModelResult(model, []);

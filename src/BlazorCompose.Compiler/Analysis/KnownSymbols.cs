@@ -1,20 +1,18 @@
-using System;
 using Microsoft.CodeAnalysis;
 
 namespace BlazorCompose.Compiler.Analysis;
 
 /// <summary>
-/// Caches resolved <see cref="IMethodSymbol"/> references for the <c>BlazorCompose.UI</c> factory
-/// methods so that expression analysis can compare symbols by identity rather than by name.
+/// Resolved <see cref="IMethodSymbol"/> references for the <c>BlazorCompose.UI</c> factory methods so
+/// that expression analysis can compare symbols by identity rather than by name.
 /// </summary>
 /// <remarks>
-/// Implements value equality based on a stable signature fingerprint of each recognized method.
-/// The fingerprint captures the fully qualified return type and parameter signatures so that any
-/// change to the <c>BlazorCompose.UI</c> API surface (e.g., adding/removing/retyping a parameter)
-/// invalidates the downstream pipeline.  Symbol instances are retained for current-run identity
-/// checks in <see cref="ComponentModelFactory"/> but are never compared across compilations.
+/// Resolved transiently from a single <see cref="Compilation"/> inside the syntax-provider transforms
+/// that consume it and never stored in the cached incremental pipeline, so its symbols are only ever
+/// compared within the compilation they came from — never across compilations.  It therefore needs no
+/// value equality of its own.
 /// </remarks>
-internal sealed class KnownSymbols : IEquatable<KnownSymbols>
+internal sealed class KnownSymbols
 {
     /// <summary>Resolved symbol for <c>BlazorCompose.UI.Text(string)</c>, or <see langword="null"/> if unavailable.</summary>
     public IMethodSymbol? TextMethod { get; }
@@ -33,9 +31,6 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
 
     /// <summary>Resolved symbol for <c>BlazorCompose.ComposableAttribute</c>, or <see langword="null"/> if unavailable.</summary>
     public INamedTypeSymbol? ComposableAttributeType { get; }
-
-    // Stable value fingerprint computed once at construction, used for equality/hashing.
-    private readonly string _fingerprint;
 
     private KnownSymbols(INamedTypeSymbol uiType)
     {
@@ -64,8 +59,6 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
                     break;
             }
         }
-
-        _fingerprint = BuildFingerprint(TextMethod, ButtonMethod, VStackMethod, IfMethod, ViewType, ComposableAttributeType);
     }
 
     /// <summary>
@@ -78,76 +71,4 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
         return uiType is not null ? new KnownSymbols(uiType) : null;
     }
 
-    // ---------------------------------------------------------------------------
-    // Value equality — based on stable signature fingerprint
-    // ---------------------------------------------------------------------------
-
-    public bool Equals(KnownSymbols? other)
-    {
-        if (other is null) return false;
-        if (ReferenceEquals(this, other)) return true;
-        return string.Equals(_fingerprint, other._fingerprint, StringComparison.Ordinal);
-    }
-
-    public override bool Equals(object? obj) => Equals(obj as KnownSymbols);
-
-    public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(_fingerprint);
-
-    // ---------------------------------------------------------------------------
-    // Fingerprint construction
-    // ---------------------------------------------------------------------------
-
-    /// <summary>
-    /// Produces a deterministic string that changes whenever the semantic signature of any
-    /// recognized UI method changes.  Format per method:
-    /// <c>ContainingType.Name(ParamType1,ParamType2):ReturnType</c>
-    /// A null method contributes the literal <c>-</c>.  Trailing type symbols contribute their fully
-    /// qualified names so that changes to the <c>View</c> or <c>ComposableAttribute</c> API surface also
-    /// invalidate downstream modeling.
-    /// </summary>
-    private static string BuildFingerprint(
-        IMethodSymbol? text,
-        IMethodSymbol? button,
-        IMethodSymbol? vstack,
-        IMethodSymbol? @if,
-        params INamedTypeSymbol?[] types)
-    {
-        var methods = new[] { text, button, vstack, @if };
-        var builder = new System.Text.StringBuilder(256);
-        for (int i = 0; i < methods.Length; i++)
-        {
-            if (i > 0) builder.Append('|');
-
-            var m = methods[i];
-            if (m is null)
-            {
-                builder.Append('-');
-                continue;
-            }
-
-            builder.Append(m.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-            builder.Append('.');
-            builder.Append(m.Name);
-            builder.Append('(');
-            for (int p = 0; p < m.Parameters.Length; p++)
-            {
-                if (p > 0) builder.Append(',');
-                if (m.Parameters[p].IsParams) builder.Append("params ");
-                builder.Append(m.Parameters[p].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-            }
-            builder.Append(')');
-            builder.Append(':');
-            builder.Append(m.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-        }
-
-        foreach (var type in types)
-        {
-            builder.Append('|');
-            builder.Append(type is null
-                ? "-"
-                : type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-        }
-
-        return builder.ToString();
-    }
 }
