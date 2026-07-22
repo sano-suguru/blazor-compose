@@ -57,6 +57,7 @@ internal static class RenderBodyEmitter
             VStackNode vstack => EmitVStack(writer, vstack, startSeq),
             IfNode ifNode => EmitIf(writer, ifNode, startSeq),
             ExpansionNode expansion => EmitExpansion(writer, expansion, startSeq),
+            ForEachNode forEach => EmitForEach(writer, forEach, startSeq),
             _ => throw new NotSupportedException(
                 $"Emission for '{node.GetType().Name}' is not yet implemented."),
         };
@@ -120,6 +121,22 @@ internal static class RenderBodyEmitter
 
         writer.AppendLine("__builder.CloseRegion();");
 
+        return seq + SequenceAllocator.Width(node);
+    }
+
+    private static int EmitForEach(IndentedWriter writer, ForEachNode node, int seq)
+    {
+        // seq is consumed by OpenRegion. The content template occupies [seq+1, seq+1+W(content)) and
+        // those sequence numbers are re-emitted every iteration; SetKey carries per-item identity.
+        writer.AppendLine($"__builder.OpenRegion({seq});");
+        writer.AppendLine($"foreach (var {node.LoopVariableName} in {node.Source.ToCode()})");
+        writer.AppendLine("{");
+        writer.Indent++;
+        writer.AppendLine($"__builder.SetKey({node.Key.ToCode()});");
+        EmitNode(writer, node.Content, seq + 1);
+        writer.Indent--;
+        writer.AppendLine("}");
+        writer.AppendLine("__builder.CloseRegion();");
         return seq + SequenceAllocator.Width(node);
     }
 
