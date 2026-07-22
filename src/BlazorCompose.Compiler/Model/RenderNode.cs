@@ -29,3 +29,15 @@ internal sealed record LocalBinding(
 internal sealed record ExpansionNode(
     EquatableArray<LocalBinding> Locals,
     RenderNode Body) : RenderNode;
+
+/// <summary>
+/// Represents a <c>ForEach(source, key, content)</c> call. Emits a keyed <c>foreach</c> region:
+/// the content template occupies one static sequence space reused every iteration, and
+/// <see cref="LoopVariableName"/> is the generated iteration variable that content/key expressions
+/// were substituted onto.
+/// </summary>
+internal sealed record ForEachNode(
+    ExpressionTemplate Source,
+    ExpressionTemplate Key,
+    RenderNode Content,
+    string LoopVariableName) : RenderNode;
