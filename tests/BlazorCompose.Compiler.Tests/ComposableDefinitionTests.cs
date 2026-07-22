@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using BlazorCompose.Compiler;
@@ -9,6 +10,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace BlazorCompose.Compiler.Tests;
 
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class ComposableDefinitionTests
 {
     [Theory]
@@ -22,7 +24,7 @@ public sealed class ComposableDefinitionTests
     [InlineData("[Composable] private static View Helper(out int value) => Text(\"x\");", "by-reference parameters are unsupported")]
     [InlineData("[Composable] private static View Helper(in int value) => Text(\"x\");", "by-reference parameters are unsupported")]
     [InlineData("[Composable] private static View Helper(ref readonly int value) => Text(\"x\");", "by-reference parameters are unsupported")]
-    public void UnsupportedDeclarationReportsBC1002(string declaration, string message)
+    public void ComposableDefinition_UnsupportedDeclaration_ReportsBC1002(string declaration, string message)
     {
         var source = $$"""
             using BlazorCompose;
@@ -43,7 +45,7 @@ public sealed class ComposableDefinitionTests
     }
 
     [Fact]
-    public void ValidDefinitionReportsNoBC1002()
+    public void ComposableDefinition_ValidDefinition_DoesNotReportBC1002()
     {
         var source = """
             using BlazorCompose;
@@ -64,7 +66,7 @@ public sealed class ComposableDefinitionTests
     }
 
     [Fact]
-    public void RegistryIsOrderIndependentValueEqual()
+    public void ComposableRegistry_EntriesDiscoveredOutOfOrder_RemainsValueEqual()
     {
         var high = new ComposableDefinitionEntry("K:b", "Beta", Definition: null, DeclarationDiagnosticReported: true);
         var low = new ComposableDefinitionEntry("K:a", "Alpha", Definition: null, DeclarationDiagnosticReported: true);
@@ -85,7 +87,7 @@ public sealed class ComposableDefinitionTests
     }
 
     [Fact]
-    public void RegistryDeduplicatesByMethodKey()
+    public void ComposableRegistry_DuplicateMethodKeys_RetainsFirstEntryOnly()
     {
         var first = new ComposableDefinitionEntry("K", "First", Definition: null, DeclarationDiagnosticReported: true);
         var duplicate = new ComposableDefinitionEntry("K", "Second", Definition: null, DeclarationDiagnosticReported: true);
@@ -97,7 +99,7 @@ public sealed class ComposableDefinitionTests
     }
 
     [Fact]
-    public void ImplicitDefaultArgumentsSortAfterSuppliedInParameterOrder()
+    public void ComposableCallTemplate_OmittedOptionalArguments_SortAfterSuppliedArgumentsInParameterOrder()
     {
         var source = """
             using BlazorCompose;
@@ -143,7 +145,7 @@ public sealed class ComposableDefinitionTests
     }
 
     [Fact]
-    public void BodyReferencingLocalFromEnclosingScopeReportsSingleBC1002()
+    public void ComposableDefinition_ExpressionBodyReferencesEnclosingLocal_ReportsSingleBC1002()
     {
         var source = """
             using BlazorCompose;
@@ -167,7 +169,7 @@ public sealed class ComposableDefinitionTests
     }
 
     [Fact]
-    public void BodyWithSelfContainedLocalReportsNoBC1002()
+    public void ComposableDefinition_ExpressionBodyUsesSelfContainedLocal_DoesNotReportBC1002()
     {
         var source = """
             using BlazorCompose;
@@ -189,7 +191,7 @@ public sealed class ComposableDefinitionTests
     }
 
     [Fact]
-    public void TemplateReplacesParametersWithHolesAndCollapsesParameterNameof()
+    public void ExpressionTemplate_ParameterExpressionContainsNameof_CollapsesNameofAndSubstitutesHole()
     {
         var source = """
             using BlazorCompose;

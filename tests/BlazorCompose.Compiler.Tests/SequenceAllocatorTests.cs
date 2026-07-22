@@ -1,20 +1,22 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using BlazorCompose.Compiler;
 using BlazorCompose.Compiler.Generation;
 
 namespace BlazorCompose.Compiler.Tests;
 
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class SequenceAllocatorTests
 {
     [Fact]
-    public void TextNodeWidthIsTwo()
+    public void SequenceAllocator_TextNode_HasWidthTwo()
     {
         Assert.Equal(2, SequenceAllocator.Width(new TextNode(ExpressionTemplate.Literal("\"hello\""))));
     }
 
     [Fact]
-    public void ButtonNodeWidthIsThree()
+    public void SequenceAllocator_ButtonNode_HasWidthThree()
     {
         Assert.Equal(3, SequenceAllocator.Width(new ButtonNode(
             ExpressionTemplate.Literal("\"label\""),
@@ -22,7 +24,7 @@ public sealed class SequenceAllocatorTests
     }
 
     [Fact]
-    public void VStackNodeWidthIsOnePlusChildrenWidthSum()
+    public void SequenceAllocator_VStackNode_HasWidthOfOnePlusChildWidths()
     {
         var children = ImmutableArray.Create<RenderNode>(
             new TextNode(ExpressionTemplate.Literal("\"a\"")),
@@ -36,7 +38,7 @@ public sealed class SequenceAllocatorTests
     }
 
     [Fact]
-    public void EmptyVStackWidthIsOne()
+    public void SequenceAllocator_EmptyVStack_HasWidthOne()
     {
         Assert.Equal(1, SequenceAllocator.Width(new VStackNode(ImmutableArray<RenderNode>.Empty)));
     }
@@ -46,7 +48,7 @@ public sealed class SequenceAllocatorTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void IfNodeWithNullOtherwiseWidthIsOnePlusThenWidth()
+    public void SequenceAllocator_IfNodeWithoutElse_HasWidthOfOnePlusThenBranch()
     {
         // OpenRegion(k) + then contents — else branch absent
         var then = new TextNode(ExpressionTemplate.Literal("\"yes\""));
@@ -56,7 +58,7 @@ public sealed class SequenceAllocatorTests
     }
 
     [Fact]
-    public void IfNodeWithBothBranchesWidthIsOnePlusBothWidths()
+    public void SequenceAllocator_IfNodeWithElse_HasWidthOfOnePlusBothBranches()
     {
         // OpenRegion(k) + then contents + else contents
         var then = new TextNode(ExpressionTemplate.Literal("\"yes\""));
@@ -70,7 +72,7 @@ public sealed class SequenceAllocatorTests
     }
 
     [Fact]
-    public void IfNodeBranchRangesAreDisjoint()
+    public void SequenceAllocator_IfNodeBranches_UseDisjointRanges()
     {
         // then  range: [k+1, k+1+W(then))
         // else  range: [k+1+W(then), k+1+W(then)+W(else))
@@ -86,7 +88,7 @@ public sealed class SequenceAllocatorTests
     }
 
     [Fact]
-    public void NodeAfterIfReceivesSequenceStableAcrossBranches()
+    public void SequenceAllocator_NodeAfterIf_ReceivesStableSequenceAcrossBranches()
     {
         // VStack(If(...), Text("Always"))
         // Text starts at 1 + Width(If) regardless of which branch If took.
@@ -103,7 +105,7 @@ public sealed class SequenceAllocatorTests
     }
 
     [Fact]
-    public void ExpansionNodeConsumesOnlyBodyWidth()
+    public void SequenceAllocator_ExpansionNode_ConsumesOnlyBodyWidth()
     {
         var node = new ExpansionNode(
             ImmutableArray.Create(

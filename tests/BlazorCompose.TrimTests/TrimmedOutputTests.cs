@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 
@@ -10,13 +11,14 @@ namespace BlazorCompose.TrimTests;
 /// - The <c>Body</c> getter should be trimmed from both derived and base types (no runtime caller).
 /// - All unreferenced inert factory methods in <c>BlazorCompose.UI</c> should be trimmed.
 /// </summary>
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class TrimmedOutputTests
 {
     private static readonly string? TrimOutputDirectory =
         Environment.GetEnvironmentVariable("BLAZORCOMPOSE_TRIM_OUTPUT");
 
     [Fact]
-    public void RenderBodyMethodIsRetainedInTrimmedAppAssembly()
+    public void TrimmedApp_AfterPublish_RetainsRenderBodyMethod()
     {
         EnsureOutputDirectoryExists();
 
@@ -28,7 +30,7 @@ public sealed class TrimmedOutputTests
     }
 
     [Fact]
-    public void BodyGetterIsAbsentFromTrimmedAppAssembly()
+    public void TrimmedApp_AfterPublish_TrimsBodyGetter()
     {
         EnsureOutputDirectoryExists();
 
@@ -43,7 +45,7 @@ public sealed class TrimmedOutputTests
     }
 
     [Fact]
-    public void PrivateComposableMethodIsAbsentFromTrimmedAppAssembly()
+    public void TrimmedApp_AfterPublish_TrimsPrivateComposableMethod()
     {
         EnsureOutputDirectoryExists();
 
@@ -59,7 +61,7 @@ public sealed class TrimmedOutputTests
     }
 
     [Fact]
-    public void BaseBodyGetterIsAbsentFromTrimmedRuntimeAssembly()
+    public void TrimmedRuntime_AfterPublish_TrimsBaseBodyGetter()
     {
         EnsureOutputDirectoryExists();
 
@@ -73,7 +75,7 @@ public sealed class TrimmedOutputTests
     }
 
     [Fact]
-    public void AllInertFactoryMethodsAreAbsentFromTrimmedRuntimeAssembly()
+    public void TrimmedRuntime_AfterPublish_TrimsAllInertFactoryMethods()
     {
         EnsureOutputDirectoryExists();
 
@@ -91,7 +93,7 @@ public sealed class TrimmedOutputTests
     }
 
     [Fact]
-    public void ComposeComponentBaseRetainsBuildRenderTree()
+    public void TrimmedRuntime_AfterPublish_RetainsComposeComponentBaseBuildRenderTree()
     {
         EnsureOutputDirectoryExists();
 

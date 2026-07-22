@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 
 namespace BlazorCompose.Compiler.Tests;
 
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class PartialComponentAnalyzerTests
 {
     // Same component as GeneratorTests but without the partial modifier.
@@ -17,7 +19,7 @@ public sealed class PartialComponentAnalyzerTests
         """;
 
     [Fact]
-    public async Task NonPartialComponentReportsDiagnosticBC1001AtClassIdentifier()
+    public async Task PartialComponentAnalyzer_NonPartialComponent_ReportsBC1001AtClassIdentifier()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<PartialComponentAnalyzer>(NonPartialCounterSource);
 

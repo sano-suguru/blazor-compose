@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
@@ -6,6 +7,7 @@ using System.Xml.Linq;
 
 namespace BlazorCompose.TrimTests;
 
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class PackageContentsTests
 {
     private const string PackageId = "BlazorCompose";
@@ -19,10 +21,10 @@ public sealed class PackageContentsTests
     ];
 
     [Fact]
-    public void PackProducesOnlyExpectedPayloadFilesAndMetadata()
+    public void Package_WhenPacked_ContainsOnlyExpectedPayloadAndMetadata()
     {
         var repositoryRoot = FindRepositoryRoot();
-        var packageOutputDirectory = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(PackProducesOnlyExpectedPayloadFilesAndMetadata));
+        var packageOutputDirectory = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(Package_WhenPacked_ContainsOnlyExpectedPayloadAndMetadata));
         var packagePath = Path.Combine(packageOutputDirectory, $"{PackageId}.{PackageVersion}.nupkg");
         var runtimeProjectPath = Path.Combine(repositoryRoot, "src", "BlazorCompose.Runtime", "BlazorCompose.Runtime.csproj");
         var verificationScriptPath = Path.Combine(repositoryRoot, "eng", "verify-package.sh");
@@ -44,10 +46,10 @@ public sealed class PackageContentsTests
     }
 
     [Fact]
-    public void RepeatedPackRebuildsCompilerAnalyzerInsteadOfPackingStaleStagedOutput()
+    public void RepeatedPack_WhenStagedCompilerOutputIsStale_RebuildsCompilerAnalyzer()
     {
         var repositoryRoot = FindRepositoryRoot();
-        var packageOutputRoot = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(RepeatedPackRebuildsCompilerAnalyzerInsteadOfPackingStaleStagedOutput));
+        var packageOutputRoot = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(RepeatedPack_WhenStagedCompilerOutputIsStale_RebuildsCompilerAnalyzer));
         var firstPackageOutputDirectory = Path.Combine(packageOutputRoot, "first");
         var secondPackageOutputDirectory = Path.Combine(packageOutputRoot, "second");
         var secondPackagePath = Path.Combine(secondPackageOutputDirectory, $"{PackageId}.{PackageVersion}.nupkg");
@@ -101,10 +103,10 @@ public sealed class PackageContentsTests
     }
 
     [Fact]
-    public void PackWithoutBuildRegeneratesMissingStagedCompilerAnalyzer()
+    public void PackWithoutBuild_WhenStagedCompilerAnalyzerIsMissing_RegeneratesCompilerAnalyzer()
     {
         var repositoryRoot = FindRepositoryRoot();
-        var packageOutputDirectory = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(PackWithoutBuildRegeneratesMissingStagedCompilerAnalyzer));
+        var packageOutputDirectory = Path.Combine(repositoryRoot, "artifacts", "package-tests", nameof(PackWithoutBuild_WhenStagedCompilerAnalyzerIsMissing_RegeneratesCompilerAnalyzer));
         var packagePath = Path.Combine(packageOutputDirectory, $"{PackageId}.{PackageVersion}.nupkg");
         var runtimeProjectPath = Path.Combine(repositoryRoot, "src", "BlazorCompose.Runtime", "BlazorCompose.Runtime.csproj");
         var verificationScriptPath = Path.Combine(repositoryRoot, "eng", "verify-package.sh");

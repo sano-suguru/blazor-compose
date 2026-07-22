@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
@@ -9,6 +10,7 @@ namespace BlazorCompose.Compiler.Tests;
 /// Verifies that direct state mutations in the Body rendering path are diagnosed,
 /// while mutations inside recognized deferred event handler lambdas are not.
 /// </summary>
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "xUnit tests use Subject_Scenario_ExpectedBehavior names.")]
 public sealed class RenderMutationAnalyzerTests
 {
     // -----------------------------------------------------------------------
@@ -130,7 +132,7 @@ public sealed class RenderMutationAnalyzerTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public async Task IncrementDirectlyInBodyTextReportsBC3001()
+    public async Task RenderMutationAnalyzer_IncrementInsideBodyText_ReportsBC3001()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
             IncrementInTextSource);
@@ -139,7 +141,7 @@ public sealed class RenderMutationAnalyzerTests
     }
 
     [Fact]
-    public async Task DirectAssignmentInBodyTextReportsBC3001()
+    public async Task RenderMutationAnalyzer_AssignmentInsideBodyText_ReportsBC3001()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
             AssignmentInTextSource);
@@ -148,7 +150,7 @@ public sealed class RenderMutationAnalyzerTests
     }
 
     [Fact]
-    public async Task CompoundAssignmentDirectlyInBodyTextReportsBC3001()
+    public async Task RenderMutationAnalyzer_CompoundAssignmentInsideBodyText_ReportsBC3001()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
             CompoundAssignmentInTextSource);
@@ -157,7 +159,7 @@ public sealed class RenderMutationAnalyzerTests
     }
 
     [Fact]
-    public async Task DecrementDirectlyInBodyTextReportsBC3001()
+    public async Task RenderMutationAnalyzer_DecrementInsideBodyText_ReportsBC3001()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
             DecrementInTextSource);
@@ -166,7 +168,7 @@ public sealed class RenderMutationAnalyzerTests
     }
 
     [Fact]
-    public async Task DirectPropertyAssignmentInBodyTextReportsBC3001()
+    public async Task RenderMutationAnalyzer_PropertyAssignmentInsideBodyText_ReportsBC3001()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
             PropertyAssignmentInTextSource);
@@ -175,7 +177,7 @@ public sealed class RenderMutationAnalyzerTests
     }
 
     [Fact]
-    public async Task PropertyIncrementDirectlyInBodyTextReportsBC3001()
+    public async Task RenderMutationAnalyzer_PropertyIncrementInsideBodyText_ReportsBC3001()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
             PropertyIncrementInTextSource);
@@ -184,7 +186,7 @@ public sealed class RenderMutationAnalyzerTests
     }
 
     [Fact]
-    public async Task IncrementInsideButtonHandlerDoesNotReportBC3001()
+    public async Task RenderMutationAnalyzer_IncrementInsideButtonHandler_DoesNotReportBC3001()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
             IncrementInButtonHandlerSource);
@@ -193,7 +195,7 @@ public sealed class RenderMutationAnalyzerTests
     }
 
     [Fact]
-    public async Task PropertyIncrementInsideButtonHandlerDoesNotReportBC3001()
+    public async Task RenderMutationAnalyzer_PropertyIncrementInsideButtonHandler_DoesNotReportBC3001()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
             PropertyIncrementInButtonHandlerSource);
@@ -202,7 +204,7 @@ public sealed class RenderMutationAnalyzerTests
     }
 
     [Fact]
-    public async Task HelperMutationUsedByBodyDoesNotReportBC3001()
+    public async Task RenderMutationAnalyzer_HelperMutationReferencedByBody_DoesNotReportBC3001()
     {
         var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
             HelperMutationSource);
