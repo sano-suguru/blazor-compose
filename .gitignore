@@ -4,3 +4,10 @@
 docs/superpowers/
 bin/
 obj/
+
+# Build/pack output (dotnet pack -o artifacts/…, PackageContentsTests)
+artifacts/
+*.nupkg
+
+# OS cruft
+.DS_Store
