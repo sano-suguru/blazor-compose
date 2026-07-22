@@ -133,14 +133,14 @@ public sealed class TrimmedOutputTests
     /// <summary>
     /// Resolves a published assembly under the trim output directory, asserting that both the output
     /// directory (the architecture gate) and the assembly itself exist. A missing publish therefore
-    /// fails with a clear "App assembly not found" message instead of a downstream file-open error.
+    /// fails with a clear, assembly-specific "not found" message instead of a downstream file-open error.
     /// </summary>
     private static string ResolvePublishedAssembly(string assemblyFileName)
     {
         EnsureOutputDirectoryExists();
 
         var assemblyPath = Path.Combine(TrimOutputDirectory!, assemblyFileName);
-        Assert.True(File.Exists(assemblyPath), $"App assembly not found at: {assemblyPath}");
+        Assert.True(File.Exists(assemblyPath), $"Published assembly '{assemblyFileName}' not found at: {assemblyPath}");
 
         return assemblyPath;
     }
