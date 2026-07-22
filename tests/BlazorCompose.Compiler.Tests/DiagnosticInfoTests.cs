@@ -1,5 +1,3 @@
-using System.Collections.Immutable;
-using System.Globalization;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 

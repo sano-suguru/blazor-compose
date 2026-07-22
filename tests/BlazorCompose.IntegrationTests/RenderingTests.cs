@@ -56,4 +56,21 @@ public sealed class RenderingTests : BunitContext
         cut.MarkupMatches(
             "<div><span>two</span><span>three</span><span>one</span><button>Rotate</button></div>");
     }
+
+    [Fact]
+    public void KeyedList_ClickingARow_InvokesThatRowsHandler()
+    {
+        var cut = Render<KeyedHandlerComponent>();
+
+        cut.MarkupMatches(
+            "<div><span>Total: 0</span><button>+1</button><button>+5</button><button>+10</button></div>");
+
+        // Clicking the second row's button (+5) must mutate state using THAT row's captured item,
+        // not the last item from the loop — a last-item-capture bug would produce 10 here instead.
+        cut.FindAll("button")[1].Click();
+        cut.Find("span").MarkupMatches("<span>Total: 5</span>");
+
+        cut.FindAll("button")[2].Click();
+        cut.Find("span").MarkupMatches("<span>Total: 15</span>");
+    }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using BlazorCompose.Compiler.Diagnostics;
@@ -13,7 +14,7 @@ namespace BlazorCompose.Compiler.Analysis;
 internal sealed class ComposableBodyContext
 {
     private readonly ImmutableDictionary<ISymbol, int> _parameterOrdinals;
-    private readonly System.Collections.Generic.Dictionary<ISymbol, int> _iterationOverlay =
+    private readonly Dictionary<ISymbol, int> _iterationOverlay =
         new(SymbolEqualityComparer.Default);
     private int _iterationDepth;
 

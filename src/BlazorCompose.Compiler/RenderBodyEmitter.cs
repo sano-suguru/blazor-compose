@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Text;
 using BlazorCompose.Compiler.Generation;
 using Microsoft.CodeAnalysis.Text;
@@ -62,9 +63,9 @@ internal static class RenderBodyEmitter
             TextNode text => EmitText(writer, text, startSeq, key),
             ButtonNode button => EmitButton(writer, button, startSeq, key),
             VStackNode vstack => EmitVStack(writer, vstack, startSeq, key),
-            IfNode ifNode => EmitIf(writer, ifNode, startSeq),
+            IfNode ifNode => EmitIf(writer, ifNode, startSeq, key),
             ExpansionNode expansion => EmitExpansion(writer, expansion, startSeq, key),
-            ForEachNode forEach => EmitForEach(writer, forEach, startSeq),
+            ForEachNode forEach => EmitForEach(writer, forEach, startSeq, key),
             _ => throw new NotSupportedException(
                 $"Emission for '{node.GetType().Name}' is not yet implemented."),
         };
@@ -104,8 +105,13 @@ internal static class RenderBodyEmitter
         return nextSeq;
     }
 
-    private static int EmitIf(IndentedWriter writer, IfNode node, int seq)
+    private static int EmitIf(IndentedWriter writer, IfNode node, int seq, string? key = null)
     {
+        // Region-rooted nodes never carry a threaded key: BC3003 blocks region-rooted content from
+        // reaching emission, so a non-null key here would mean a keyable node was wired to this branch
+        // without updating that contract. Fail fast in tests instead of silently dropping SetKey.
+        Debug.Assert(key is null, $"{nameof(EmitIf)} does not support a threaded key; SetKey would be silently dropped.");
+
         // seq is consumed by OpenRegion.
         // then  branch occupies [seq+1, seq+1+W(then)).
         // else  branch occupies [seq+1+W(then), seq+1+W(then)+W(else)).
@@ -137,8 +143,13 @@ internal static class RenderBodyEmitter
         return seq + SequenceAllocator.Width(node);
     }
 
-    private static int EmitForEach(IndentedWriter writer, ForEachNode node, int seq)
+    private static int EmitForEach(IndentedWriter writer, ForEachNode node, int seq, string? key = null)
     {
+        // Region-rooted nodes never carry a threaded key: BC3003 blocks region-rooted content from
+        // reaching emission, so a non-null key here would mean a keyable node was wired to this branch
+        // without updating that contract. Fail fast in tests instead of silently dropping SetKey.
+        Debug.Assert(key is null, $"{nameof(EmitForEach)} does not support a threaded key; SetKey would be silently dropped.");
+
         // seq is consumed by OpenRegion. The content template occupies [seq+1, seq+1+W(content)) and
         // those sequence numbers are re-emitted every iteration; SetKey carries per-item identity.
         writer.AppendLine($"__builder.OpenRegion({seq});");
