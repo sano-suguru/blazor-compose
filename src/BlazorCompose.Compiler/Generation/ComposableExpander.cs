@@ -76,56 +76,56 @@ internal static class ComposableExpander
                     button.Handler.Substitute(substitution));
 
             case VStackTemplateNode vstack:
-            {
-                var children = ImmutableArray.CreateBuilder<RenderNode>(vstack.Children.Length);
-                foreach (var child in vstack.Children)
                 {
-                    var expanded = ExpandNode(
-                        child,
-                        substitution,
-                        ref nextLogicalPreorderOrdinal,
-                        activeMethodStack,
-                        registry,
-                        generatedTypeInheritanceKeys,
-                        diagnostics);
-                    if (expanded is null)
-                        return null;
-                    children.Add(expanded);
-                }
+                    var children = ImmutableArray.CreateBuilder<RenderNode>(vstack.Children.Length);
+                    foreach (var child in vstack.Children)
+                    {
+                        var expanded = ExpandNode(
+                            child,
+                            substitution,
+                            ref nextLogicalPreorderOrdinal,
+                            activeMethodStack,
+                            registry,
+                            generatedTypeInheritanceKeys,
+                            diagnostics);
+                        if (expanded is null)
+                            return null;
+                        children.Add(expanded);
+                    }
 
-                return new VStackNode(children.ToImmutable());
-            }
+                    return new VStackNode(children.ToImmutable());
+                }
 
             case IfTemplateNode ifNode:
-            {
-                var thenNode = ExpandNode(
-                    ifNode.Then,
-                    substitution,
-                    ref nextLogicalPreorderOrdinal,
-                    activeMethodStack,
-                    registry,
-                    generatedTypeInheritanceKeys,
-                    diagnostics);
-                if (thenNode is null)
-                    return null;
-
-                RenderNode? otherwiseNode = null;
-                if (ifNode.Otherwise is not null)
                 {
-                    otherwiseNode = ExpandNode(
-                        ifNode.Otherwise,
+                    var thenNode = ExpandNode(
+                        ifNode.Then,
                         substitution,
                         ref nextLogicalPreorderOrdinal,
                         activeMethodStack,
                         registry,
                         generatedTypeInheritanceKeys,
                         diagnostics);
-                    if (otherwiseNode is null)
+                    if (thenNode is null)
                         return null;
-                }
 
-                return new IfNode(ifNode.Condition.Substitute(substitution), thenNode, otherwiseNode);
-            }
+                    RenderNode? otherwiseNode = null;
+                    if (ifNode.Otherwise is not null)
+                    {
+                        otherwiseNode = ExpandNode(
+                            ifNode.Otherwise,
+                            substitution,
+                            ref nextLogicalPreorderOrdinal,
+                            activeMethodStack,
+                            registry,
+                            generatedTypeInheritanceKeys,
+                            diagnostics);
+                        if (otherwiseNode is null)
+                            return null;
+                    }
+
+                    return new IfNode(ifNode.Condition.Substitute(substitution), thenNode, otherwiseNode);
+                }
 
             case ComposableCallTemplateNode call:
                 return ExpandCall(
