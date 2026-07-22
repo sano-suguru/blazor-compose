@@ -22,4 +22,5 @@ internal sealed record ComponentAnalysis(
     string? Namespace,
     EquatableArray<string> InheritanceKeys,
     RenderTemplateNode? Template,
-    EquatableArray<DiagnosticInfo> BodyDiagnostics);
+    EquatableArray<DiagnosticInfo> BodyDiagnostics,
+    EquatableArray<DiagnosticInfo> BodyWarnings);

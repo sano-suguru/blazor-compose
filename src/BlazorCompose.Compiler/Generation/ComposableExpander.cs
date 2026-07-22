@@ -127,6 +127,30 @@ internal static class ComposableExpander
                     return new IfNode(ifNode.Condition.Substitute(substitution), thenNode, otherwiseNode);
                 }
 
+            case ForEachTemplateNode forEach:
+                {
+                    // The preorder `ordinal` (assigned at the top of ExpandNode) names a loop variable
+                    // unique across the whole component. Source is bound in the outer scope; key/content
+                    // are bound in the extended scope whose last slot is this loop variable.
+                    var loopVariableName = $"__bc_item_{ordinal}";
+                    var source = forEach.Source.Substitute(substitution);
+                    var extended = substitution.Add(loopVariableName);
+                    var key = forEach.Key.Substitute(extended);
+
+                    var content = ExpandNode(
+                        forEach.Content,
+                        extended,
+                        ref nextLogicalPreorderOrdinal,
+                        activeMethodStack,
+                        registry,
+                        generatedTypeInheritanceKeys,
+                        diagnostics);
+                    if (content is null)
+                        return null;
+
+                    return new ForEachNode(source, key, content, loopVariableName);
+                }
+
             case ComposableCallTemplateNode call:
                 return ExpandCall(
                     call,

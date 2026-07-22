@@ -47,7 +47,7 @@ internal static class ComposableDefinitionFactory
 
         return new ComposableDiscoveryResult(
             new ComposableDefinitionEntry(methodKey, displayName, definition, DeclarationDiagnosticReported: false),
-            []);
+            bodyDiagnostics);
     }
 
     private static string? ValidateDeclaration(
@@ -163,7 +163,7 @@ internal static class ComposableDefinitionFactory
             return null;
         }
 
-        diagnostics = [];
+        diagnostics = context.Warnings.ToImmutable();
         return new ComposableDefinition(
             MethodKey.Create(method),
             method.Name,

@@ -257,6 +257,47 @@ public sealed class GeneratorTests
         Assert.DoesNotContain("else", generated);
     }
 
+    private const string ForEachComponentSource = """
+        using System.Collections.Generic;
+        using static BlazorCompose.UI;
+
+        public partial class TodoPage : BlazorCompose.ComposeComponentBase
+        {
+            private readonly List<Todo> _items = new();
+
+            protected override BlazorCompose.View Body =>
+                VStack(
+                    ForEach(_items, key: t => t.Id, content: item => Text(item.Title)),
+                    Text("footer"));
+
+            private sealed record Todo(int Id, string Title);
+        }
+        """;
+
+    [Fact]
+    public void Generator_ForEachOverItems_EmitsKeyedForeachRegionWithStableFollowingSequence()
+    {
+        var result = CompilationTestHost.RunGenerator(ForEachComponentSource);
+
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // VStack opens at 0; ForEach region at 1; content Text spans seq 2..3; SetKey consumes none.
+        Assert.Contains("__builder.OpenElement(0, \"div\");", generated);
+        Assert.Contains("__builder.OpenRegion(1);", generated);
+        Assert.Contains("foreach (var __bc_item_", generated);
+        Assert.Contains(" in _items)", generated);
+        Assert.Contains(".Id);", generated);       // SetKey uses the item
+        Assert.Contains(".Title);", generated);    // content uses the item
+        Assert.Contains("__builder.OpenElement(2, \"span\");", generated);
+        Assert.Contains("__builder.AddContent(3,", generated);
+        Assert.Contains("__builder.CloseRegion();", generated);
+        // Following sibling is stable: VStack(1) + ForEach region(1 + content 2) => next span at 4.
+        Assert.Contains("__builder.OpenElement(4, \"span\");", generated);
+        Assert.Contains("__builder.AddContent(5, \"footer\");", generated);
+
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
     // -----------------------------------------------------------------------
     // Static composable call-site expansion
     // -----------------------------------------------------------------------

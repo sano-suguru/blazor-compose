@@ -93,7 +93,8 @@ internal static class ComponentModelFactory
             Namespace: namespaceName,
             InheritanceKeys: BuildInheritanceKeys(symbol),
             Template: template,
-            BodyDiagnostics: bodyContext.Diagnostics.ToImmutable());
+            BodyDiagnostics: bodyContext.Diagnostics.ToImmutable(),
+            BodyWarnings: bodyContext.Warnings.ToImmutable());
     }
 
     /// <summary>
@@ -134,7 +135,7 @@ internal static class ComponentModelFactory
             Namespace: analysis.Namespace,
             RootNode: expansion.Node);
 
-        return new ComponentModelResult(model, []);
+        return new ComponentModelResult(model, analysis.BodyWarnings.AsImmutableArray());
     }
 
     /// <summary>

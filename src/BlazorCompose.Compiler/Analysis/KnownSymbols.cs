@@ -26,6 +26,9 @@ internal sealed class KnownSymbols
     /// <summary>Resolved symbol for <c>BlazorCompose.UI.If(bool, Func&lt;View&gt;, Func&lt;View&gt;?)</c>, or <see langword="null"/> if unavailable.</summary>
     public IMethodSymbol? IfMethod { get; }
 
+    /// <summary>Resolved symbol for <c>BlazorCompose.UI.ForEach&lt;T&gt;(IEnumerable&lt;T&gt;, Func&lt;T, object?&gt;, Func&lt;T, View&gt;)</c>, or null.</summary>
+    public IMethodSymbol? ForEachMethod { get; }
+
     /// <summary>Resolved symbol for <c>BlazorCompose.View</c>, or <see langword="null"/> if unavailable.</summary>
     public INamedTypeSymbol? ViewType { get; }
 
@@ -56,6 +59,9 @@ internal sealed class KnownSymbols
                     break;
                 case "If" when method.Parameters.Length == 3:
                     IfMethod = method;
+                    break;
+                case "ForEach" when method.Parameters.Length == 3 && method.Arity == 1:
+                    ForEachMethod = method;
                     break;
             }
         }
