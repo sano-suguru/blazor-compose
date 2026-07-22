@@ -2,7 +2,7 @@
 
 ## Repository status and commands
 
-This repository now has its initial .NET foundation in place. `WHITEPAPER.md` and `YELLOWPAPER.md` remain the authoritative product and technical specifications, and implementation changes must stay consistent with both papers where their decisions overlap.
+This repository now has its initial .NET foundation in place. `DESIGN.md` (design overview) and `ARCHITECTURE.md` (internal architecture) remain the authoritative product and technical specifications, and implementation changes must stay consistent with both documents where their decisions overlap. These documents describe the intended finished design and do not track progress; the current state of the implementation lives in the code, tests, and Issues.
 
 - `global.json` pins SDK `10.0.300` with `latestPatch` roll-forward.
 - `BlazorCompose.slnx` contains six in-solution projects: `BlazorCompose.Runtime`, `BlazorCompose.Compiler`, `BlazorCompose.Runtime.Tests`, `BlazorCompose.Compiler.Tests`, `BlazorCompose.IntegrationTests`, and `BlazorCompose.Samples.Counter`.
