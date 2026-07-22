@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.Collections.Immutable;
-
 namespace BlazorCompose.Compiler;
 
 /// <summary>
@@ -19,36 +16,7 @@ internal sealed record ButtonNode(
     ExpressionTemplate HandlerExpression) : RenderNode;
 
 /// <summary>Represents a <c>VStack(children…)</c> call that emits an HTML <c>div</c> wrapper.</summary>
-internal sealed record VStackNode(ImmutableArray<RenderNode> Children) : RenderNode
-{
-    // ImmutableArray<T> uses reference equality in the compiler-generated record Equals, so we
-    // override to give structural equality that the incremental generator pipeline can use.
-    // No 'virtual' here: sealed records do not allow new virtual members.
-    public bool Equals(VStackNode? other) =>
-        other is not null && StructuralEquals(Children, other.Children);
-
-    public override int GetHashCode()
-    {
-        unchecked
-        {
-            int hash = 17;
-            foreach (var child in Children)
-                hash = hash * 31 + (child?.GetHashCode() ?? 0);
-            return hash;
-        }
-    }
-
-    private static bool StructuralEquals(ImmutableArray<RenderNode> a, ImmutableArray<RenderNode> b)
-    {
-        if (a.Length != b.Length) return false;
-        for (int i = 0; i < a.Length; i++)
-        {
-            if (!EqualityComparer<RenderNode>.Default.Equals(a[i], b[i]))
-                return false;
-        }
-        return true;
-    }
-}
+internal sealed record VStackNode(EquatableArray<RenderNode> Children) : RenderNode;
 
 /// <summary>
 /// Represents an <c>If(condition, then, otherwise)</c> call.
@@ -63,31 +31,5 @@ internal sealed record LocalBinding(
     ExpressionTemplate Initializer);
 
 internal sealed record ExpansionNode(
-    ImmutableArray<LocalBinding> Locals,
-    RenderNode Body) : RenderNode
-{
-    public bool Equals(ExpansionNode? other) =>
-        other is not null
-        && StructuralEquals(Locals, other.Locals)
-        && EqualityComparer<RenderNode>.Default.Equals(Body, other.Body);
-
-    public override int GetHashCode()
-    {
-        var hash = 17;
-        foreach (var local in Locals)
-            hash = unchecked(hash * 31 + (local?.GetHashCode() ?? 0));
-        hash = unchecked(hash * 31 + (Body?.GetHashCode() ?? 0));
-        return hash;
-    }
-
-    private static bool StructuralEquals(ImmutableArray<LocalBinding> a, ImmutableArray<LocalBinding> b)
-    {
-        if (a.Length != b.Length) return false;
-        for (int i = 0; i < a.Length; i++)
-        {
-            if (!EqualityComparer<LocalBinding>.Default.Equals(a[i], b[i]))
-                return false;
-        }
-        return true;
-    }
-}
+    EquatableArray<LocalBinding> Locals,
+    RenderNode Body) : RenderNode;

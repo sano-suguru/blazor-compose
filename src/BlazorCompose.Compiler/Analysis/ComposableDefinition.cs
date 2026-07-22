@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-
 namespace BlazorCompose.Compiler.Analysis;
 
 /// <summary>Distinguishes value parameters from view-subtree parameters of a composable method.</summary>
@@ -53,31 +49,9 @@ internal sealed record ComposableDefinition(
     string MethodKey,
     string DisplayName,
     string ContainingTypeKey,
-    ImmutableArray<ComposableParameter> Parameters,
-    ImmutableArray<ComposableAccessRequirement> AccessRequirements,
-    RenderTemplateNode Body)
-{
-    public bool Equals(ComposableDefinition? other) =>
-        other is not null
-        && MethodKey == other.MethodKey
-        && DisplayName == other.DisplayName
-        && ContainingTypeKey == other.ContainingTypeKey
-        && StructuralEquality.ArrayEquals(Parameters, other.Parameters)
-        && StructuralEquality.ArrayEquals(AccessRequirements, other.AccessRequirements)
-        && EqualityComparer<RenderTemplateNode>.Default.Equals(Body, other.Body);
-
-    public override int GetHashCode()
-    {
-        var hash = 17;
-        hash = unchecked(hash * 31 + MethodKey.GetHashCode());
-        hash = unchecked(hash * 31 + DisplayName.GetHashCode());
-        hash = unchecked(hash * 31 + ContainingTypeKey.GetHashCode());
-        hash = unchecked(hash * 31 + StructuralEquality.ArrayHashCode(Parameters));
-        hash = unchecked(hash * 31 + StructuralEquality.ArrayHashCode(AccessRequirements));
-        hash = unchecked(hash * 31 + (Body?.GetHashCode() ?? 0));
-        return hash;
-    }
-}
+    EquatableArray<ComposableParameter> Parameters,
+    EquatableArray<ComposableAccessRequirement> AccessRequirements,
+    RenderTemplateNode Body);
 
 /// <summary>
 /// A registry slot for one source-declared composable.  Invalid declarations remain present with

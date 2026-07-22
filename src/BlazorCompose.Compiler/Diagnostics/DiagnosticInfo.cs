@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
@@ -18,7 +16,7 @@ internal sealed record DiagnosticInfo(
     string FilePath,
     TextSpan Span,
     LinePositionSpan LineSpan,
-    ImmutableArray<string> MessageArguments)
+    EquatableArray<string> MessageArguments)
 {
     /// <summary>Captures a <see cref="DiagnosticInfo"/> from a live <see cref="Location"/>.</summary>
     public static DiagnosticInfo Create(
@@ -32,7 +30,7 @@ internal sealed record DiagnosticInfo(
             lineSpan.Path ?? string.Empty,
             location.SourceSpan,
             lineSpan.Span,
-            messageArguments.IsDefault ? [] : messageArguments);
+            messageArguments);
     }
 
     /// <summary>
@@ -43,41 +41,5 @@ internal sealed record DiagnosticInfo(
     {
         var location = Location.Create(FilePath, Span, LineSpan);
         return Diagnostic.Create(descriptor, location, MessageArguments.ToArray<object?>());
-    }
-
-    public bool Equals(DiagnosticInfo? other) =>
-        other is not null
-        && Id == other.Id
-        && FilePath == other.FilePath
-        && Span.Equals(other.Span)
-        && LineSpan.Equals(other.LineSpan)
-        && SequenceEquals(MessageArguments, other.MessageArguments);
-
-    public override int GetHashCode()
-    {
-        var hash = 17;
-        hash = unchecked(hash * 31 + Id.GetHashCode());
-        hash = unchecked(hash * 31 + FilePath.GetHashCode());
-        hash = unchecked(hash * 31 + Span.GetHashCode());
-        hash = unchecked(hash * 31 + LineSpan.GetHashCode());
-        foreach (var argument in MessageArguments)
-            hash = unchecked(hash * 31 + (argument?.GetHashCode() ?? 0));
-        return hash;
-    }
-
-    private static bool SequenceEquals(ImmutableArray<string> left, ImmutableArray<string> right)
-    {
-        if (left.IsDefaultOrEmpty && right.IsDefaultOrEmpty)
-            return true;
-        if (left.IsDefault || right.IsDefault || left.Length != right.Length)
-            return false;
-
-        for (var index = 0; index < left.Length; index++)
-        {
-            if (!string.Equals(left[index], right[index], StringComparison.Ordinal))
-                return false;
-        }
-
-        return true;
     }
 }

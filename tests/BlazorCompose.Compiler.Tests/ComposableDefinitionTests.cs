@@ -121,7 +121,7 @@ public sealed class ComposableDefinitionTests
 
         Assert.Equal(3, arguments.Length);
 
-        var supplied = Assert.Single(arguments.Where(static a => !a.IsImplicitDefault));
+        var supplied = Assert.Single(arguments, static a => !a.IsImplicitDefault);
         var implicitDefaults = arguments.Where(static a => a.IsImplicitDefault).ToArray();
 
         // Every implicit default sorts strictly after the single supplied argument.

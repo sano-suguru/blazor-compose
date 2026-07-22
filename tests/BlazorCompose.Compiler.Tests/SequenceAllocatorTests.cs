@@ -38,7 +38,7 @@ public sealed class SequenceAllocatorTests
     [Fact]
     public void SequenceAllocator_EmptyVStack_HasWidthOne()
     {
-        Assert.Equal(1, SequenceAllocator.Width(new VStackNode([])));
+        Assert.Equal(1, SequenceAllocator.Width(new VStackNode(ImmutableArray<RenderNode>.Empty)));
     }
 
     // -----------------------------------------------------------------------
@@ -96,7 +96,7 @@ public sealed class SequenceAllocatorTests
             ExpressionTemplate.Literal("() => { }"));
         var ifNode = new IfNode(ExpressionTemplate.Literal("_visible"), then, otherwise);
         var textNode = new TextNode(ExpressionTemplate.Literal("\"always\""));
-        var vstack = new VStackNode([ifNode, textNode]);
+        var vstack = new VStackNode(ImmutableArray.Create<RenderNode>(ifNode, textNode));
 
         int expectedVStackWidth = 1 + SequenceAllocator.Width(ifNode) + SequenceAllocator.Width(textNode);
         Assert.Equal(expectedVStackWidth, SequenceAllocator.Width(vstack));
@@ -106,10 +106,10 @@ public sealed class SequenceAllocatorTests
     public void SequenceAllocator_ExpansionNode_ConsumesOnlyBodyWidth()
     {
         var node = new ExpansionNode(
-            [new LocalBinding(
-                    "global::System.String",
-                    "__bc_arg_1_0",
-                    ExpressionTemplate.Literal("GetLabel()"))],
+            ImmutableArray.Create(new LocalBinding(
+                "global::System.String",
+                "__bc_arg_1_0",
+                ExpressionTemplate.Literal("GetLabel()"))),
             new TextNode(ExpressionTemplate.Literal("__bc_arg_1_0")));
 
         Assert.Equal(2, SequenceAllocator.Width(node));

@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 
@@ -40,39 +38,7 @@ internal sealed record ButtonTemplateNode(
     ExpressionTemplate Handler) : RenderTemplateNode;
 
 internal sealed record VStackTemplateNode(
-    ImmutableArray<RenderTemplateNode> Children) : RenderTemplateNode
-{
-    public bool Equals(VStackTemplateNode? other) =>
-        other is not null && StructuralEquals(Children, other.Children);
-
-    public override int GetHashCode()
-    {
-        var hash = 17;
-        foreach (var child in Children)
-            hash = unchecked(hash * 31 + (child?.GetHashCode() ?? 0));
-        return hash;
-    }
-
-    private static bool StructuralEquals(
-        ImmutableArray<RenderTemplateNode> left,
-        ImmutableArray<RenderTemplateNode> right)
-    {
-        if (left.Length != right.Length)
-            return false;
-
-        for (var index = 0; index < left.Length; index++)
-        {
-            if (!EqualityComparer<RenderTemplateNode>.Default.Equals(
-                    left[index],
-                    right[index]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-}
+    EquatableArray<RenderTemplateNode> Children) : RenderTemplateNode;
 
 internal sealed record IfTemplateNode(
     ExpressionTemplate Condition,
@@ -82,43 +48,5 @@ internal sealed record IfTemplateNode(
 internal sealed record ComposableCallTemplateNode(
     string MethodKey,
     string DisplayName,
-    ImmutableArray<ComposableInvocationArgument> Arguments,
-    TemplateLocation Location) : RenderTemplateNode
-{
-    public bool Equals(ComposableCallTemplateNode? other) =>
-        other is not null
-        && MethodKey == other.MethodKey
-        && DisplayName == other.DisplayName
-        && Location.Equals(other.Location)
-        && StructuralEquals(Arguments, other.Arguments);
-
-    public override int GetHashCode()
-    {
-        var hash = unchecked(17 * 31 + MethodKey.GetHashCode());
-        hash = unchecked(hash * 31 + DisplayName.GetHashCode());
-        hash = unchecked(hash * 31 + Location.GetHashCode());
-        foreach (var argument in Arguments)
-            hash = unchecked(hash * 31 + (argument?.GetHashCode() ?? 0));
-        return hash;
-    }
-
-    private static bool StructuralEquals(
-        ImmutableArray<ComposableInvocationArgument> left,
-        ImmutableArray<ComposableInvocationArgument> right)
-    {
-        if (left.Length != right.Length)
-            return false;
-
-        for (var index = 0; index < left.Length; index++)
-        {
-            if (!EqualityComparer<ComposableInvocationArgument>.Default.Equals(
-                    left[index],
-                    right[index]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-}
+    EquatableArray<ComposableInvocationArgument> Arguments,
+    TemplateLocation Location) : RenderTemplateNode;

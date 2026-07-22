@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using BlazorCompose.Compiler.Analysis;
 using BlazorCompose.Compiler.Diagnostics;
 
 namespace BlazorCompose.Compiler;
@@ -41,23 +39,10 @@ internal sealed record ComponentModelResult
     public ComponentModelResult(ComponentModel? model, ImmutableArray<DiagnosticInfo> diagnostics)
     {
         Model = model;
-        Diagnostics = diagnostics.IsDefault ? [] : diagnostics;
+        Diagnostics = diagnostics;
     }
 
     public ComponentModel? Model { get; }
 
-    public ImmutableArray<DiagnosticInfo> Diagnostics { get; }
-
-    public bool Equals(ComponentModelResult? other) =>
-        other is not null
-        && EqualityComparer<ComponentModel?>.Default.Equals(Model, other.Model)
-        && StructuralEquality.ArrayEquals(Diagnostics, other.Diagnostics);
-
-    public override int GetHashCode()
-    {
-        var hash = 17;
-        hash = unchecked(hash * 31 + (Model?.GetHashCode() ?? 0));
-        hash = unchecked(hash * 31 + StructuralEquality.ArrayHashCode(Diagnostics));
-        return hash;
-    }
+    public EquatableArray<DiagnosticInfo> Diagnostics { get; }
 }
