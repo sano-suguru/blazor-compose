@@ -50,4 +50,31 @@ internal static class DiagnosticDescriptors
             "The Body getter must be a pure projection of state to UI. " +
             "Mutating component state inside Body causes render-time side effects that can corrupt " +
             "the rendering pipeline. Move the mutation to an event handler.");
+
+    /// <summary>
+    /// BC3002: A <c>ForEach</c> key selector does not reference its item and therefore cannot express
+    /// per-item identity, defeating keyed diffing. Heuristic and intentionally conservative: it does not
+    /// detect an item-derived-but-index-like key.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BC3002 = new(
+        id: "BC3002",
+        title: "ForEach key selector may not identify items",
+        messageFormat: "ForEach key selector does not reference the item; a key must identify each item so list state is preserved across reorders",
+        category: "BlazorCompose",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description:
+            "A ForEach key selector should return a value derived from the item so Blazor can preserve " +
+            "per-row state across insertion, removal, and reordering. A key that ignores the item " +
+            "(a constant, an external index, or another list's item) forces full re-rendering.");
+
+    /// <summary>Resolves a captured diagnostic <paramref name="id"/> to its descriptor.</summary>
+    public static DiagnosticDescriptor ById(string id) => id switch
+    {
+        "BC1001" => BC1001,
+        "BC1002" => BC1002,
+        "BC3001" => BC3001,
+        "BC3002" => BC3002,
+        _ => throw new System.ArgumentOutOfRangeException(nameof(id), id, "Unknown BlazorCompose diagnostic id."),
+    };
 }

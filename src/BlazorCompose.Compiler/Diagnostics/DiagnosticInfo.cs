@@ -42,4 +42,7 @@ internal sealed record DiagnosticInfo(
         var location = Location.Create(FilePath, Span, LineSpan);
         return Diagnostic.Create(descriptor, location, MessageArguments.ToArray<object?>());
     }
+
+    /// <summary>Reconstructs a <see cref="Diagnostic"/> resolving the descriptor from <see cref="Id"/>.</summary>
+    public Diagnostic ToDiagnostic() => ToDiagnostic(DiagnosticDescriptors.ById(Id));
 }

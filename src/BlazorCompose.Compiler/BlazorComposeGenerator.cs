@@ -46,7 +46,7 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
             static (productionContext, result) =>
             {
                 foreach (var diagnostic in result.Diagnostics)
-                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic(DiagnosticDescriptors.BC1002));
+                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic());
             });
 
         // Collect every source composable entry — including invalid declarations — into a
@@ -72,7 +72,7 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
             static (productionContext, result) =>
             {
                 foreach (var diagnostic in result.Diagnostics)
-                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic(DiagnosticDescriptors.BC1002));
+                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic());
             });
 
         // Add source only when a final model exists.
