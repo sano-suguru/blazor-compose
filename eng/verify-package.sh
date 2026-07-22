@@ -65,7 +65,8 @@ packaged_files=$(
 
 expected_payload_files=$(printf '%s\n' \
   'analyzers/dotnet/cs/BlazorCompose.Compiler.dll' \
-  'lib/net10.0/BlazorCompose.Runtime.dll')
+  'lib/net10.0/BlazorCompose.Runtime.dll' \
+  'lib/net10.0/BlazorCompose.Runtime.xml')
 
 payload_files=$(
   printf '%s\n' "$packaged_files" |
@@ -101,7 +102,8 @@ while IFS= read -r packaged_file; do
 
   case "$packaged_file" in
     '[Content_Types].xml' | '_rels/.rels' | 'BlazorCompose.nuspec' | 'README.md' | \
-    'analyzers/dotnet/cs/BlazorCompose.Compiler.dll' | 'lib/net10.0/BlazorCompose.Runtime.dll' )
+    'analyzers/dotnet/cs/BlazorCompose.Compiler.dll' | 'lib/net10.0/BlazorCompose.Runtime.dll' | \
+    'lib/net10.0/BlazorCompose.Runtime.xml' )
       ;;
     package/services/metadata/core-properties/*.psmdcp)
       ;;

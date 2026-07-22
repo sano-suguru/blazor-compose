@@ -20,7 +20,7 @@ internal sealed class KnownSymbols
     /// <summary>Resolved symbol for <c>BlazorCompose.UI.Button(string, Action)</c>, or <see langword="null"/> if unavailable.</summary>
     public IMethodSymbol? ButtonMethod { get; }
 
-    /// <summary>Resolved symbol for <c>BlazorCompose.UI.VStack(params View[])</c>, or <see langword="null"/> if unavailable.</summary>
+    /// <summary>Resolved symbol for <c>BlazorCompose.UI.VStack(params ReadOnlySpan&lt;View&gt;)</c>, or <see langword="null"/> if unavailable.</summary>
     public IMethodSymbol? VStackMethod { get; }
 
     /// <summary>Resolved symbol for <c>BlazorCompose.UI.If(bool, Func&lt;View&gt;, Func&lt;View&gt;?)</c>, or <see langword="null"/> if unavailable.</summary>

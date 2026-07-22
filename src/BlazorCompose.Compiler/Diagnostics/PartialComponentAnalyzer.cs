@@ -36,18 +36,18 @@ public sealed class PartialComponentAnalyzer : DiagnosticAnalyzer
         if (!ComposeComponentBaseFacts.InheritsFromComposeComponentBase(symbol))
             return;
 
-        var isPartial = symbol.DeclaringSyntaxReferences
-            .Any(syntaxRef =>
-                syntaxRef.GetSyntax() is ClassDeclarationSyntax classDecl &&
-                classDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)));
+        ClassDeclarationSyntax? firstDeclaration = null;
 
-        if (isPartial)
-            return;
+        foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+        {
+            if (syntaxRef.GetSyntax(context.CancellationToken) is not ClassDeclarationSyntax classDecl)
+                continue;
 
-        var firstDeclaration = symbol.DeclaringSyntaxReferences
-            .Select(static r => r.GetSyntax())
-            .OfType<ClassDeclarationSyntax>()
-            .FirstOrDefault();
+            if (classDecl.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)))
+                return;
+
+            firstDeclaration ??= classDecl;
+        }
 
         if (firstDeclaration is not null)
         {
