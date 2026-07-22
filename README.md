@@ -23,8 +23,6 @@ public partial class CounterPage : ComposeComponentBase
 - **[DESIGN.md](DESIGN.md)** — design overview: background, goals, API design, and platform strategy. Start here.
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — internal architecture: the compilation algorithm, static sequence assignment, memory layout, and analyzer diagnostics.
 
-Both documents describe the intended finished design. They do **not** track progress.
+## Status
 
-## Current status
-
-To see what actually works today, look at the code, the tests, and the Issues — not the design documents. `AGENTS.md` lists the validated build and test commands.
+What works today lives in the code, the tests, and the Issues — not the design docs above.
