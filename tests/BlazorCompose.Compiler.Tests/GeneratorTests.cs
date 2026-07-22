@@ -298,6 +298,69 @@ public sealed class GeneratorTests
         CompilationTestHost.AssertOutputCompiles(result);
     }
 
+    private const string NestedForEachInComposableSource = """
+        using System.Collections.Generic;
+        using static BlazorCompose.UI;
+
+        public partial class BoardPage : BlazorCompose.ComposeComponentBase
+        {
+            private readonly List<Column> _columns = new();
+
+            protected override BlazorCompose.View Body => Section("Board", _columns);
+
+            [BlazorCompose.Composable]
+            private static BlazorCompose.View Section(string heading, List<Column> columns) =>
+                VStack(
+                    Text(heading),
+                    ForEach(columns, key: col => col.Id, content: col =>
+                        ForEach(col.Cards, key: card => card.Id, content: card =>
+                            Text($"{heading}:{col.Name}:{card.Title}"))));
+
+            public sealed record Card(int Id, string Title);
+            public sealed record Column(int Id, string Name, List<Card> Cards);
+        }
+        """;
+
+    [Fact]
+    public void Generator_NestedForEachInComposable_BindsOuterParamOuterItemAndInnerItemToDistinctLocals()
+    {
+        var result = CompilationTestHost.RunGenerator(NestedForEachInComposableSource);
+
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // Two distinct loop variables, distinct from the composable arg locals.
+        Assert.Contains("foreach (var __bc_item_", generated);
+        // The innermost interpolation references the composable parameter (heading -> __bc_arg local),
+        // the outer item (col), and the inner item (card) — all resolved, and the output compiles.
+        CompilationTestHost.AssertOutputCompiles(result);
+        // No BC3002 (every key references its own item).
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3002");
+    }
+
+    [Fact]
+    public void Generator_ForEachAcceptsSimpleParenthesizedAndTypedLambdas_AllCompile()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<int> _xs = new();
+                protected override BlazorCompose.View Body =>
+                    VStack(
+                        ForEach(_xs, key: x => x, content: x => Text(x.ToString())),
+                        ForEach(_xs, key: (x) => x, content: (x) => Text(x.ToString())),
+                        ForEach(_xs, key: (int x) => x, content: (int x) => Text(x.ToString())));
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Single(result.GeneratedSources);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
     // -----------------------------------------------------------------------
     // Static composable call-site expansion
     // -----------------------------------------------------------------------
