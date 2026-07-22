@@ -83,4 +83,35 @@ public sealed class EquatableArrayTests
         string[] expected = ["a", "b", "c"];
         Assert.Equal(expected, value.ToArray());
     }
+
+    [Fact]
+    public void RecordHoldingDefaultVsEmptyArray_IsEqualAndSharesHashCode()
+    {
+        // The exact incremental-cache-split vector: a record whose array field is default must be
+        // both equal to AND hash-equal with the same record built from an empty array, otherwise
+        // Roslyn would treat two value-equal models as different (equal compare, split hash) and
+        // silently corrupt caching.
+        var fromDefault = new VStackNode(default);
+        var fromEmpty = new VStackNode(ImmutableArray<RenderNode>.Empty);
+
+        Assert.Equal(fromDefault, fromEmpty);
+        Assert.Equal(fromDefault.GetHashCode(), fromEmpty.GetHashCode());
+    }
+
+    [Fact]
+    public void NestedEquality_TwoLevels_IsStructural()
+    {
+        // Two levels of EquatableArray nesting (VStack -> VStack -> Text), each built from distinct
+        // backing arrays, must compare and hash equal so value equality propagates all the way down.
+        static VStackNode Build() =>
+            new(ImmutableArray.Create<RenderNode>(
+                new VStackNode(ImmutableArray.Create<RenderNode>(
+                    new TextNode(ExpressionTemplate.Literal("x"))))));
+
+        var left = Build();
+        var right = Build();
+
+        Assert.Equal(left, right);
+        Assert.Equal(left.GetHashCode(), right.GetHashCode());
+    }
 }
