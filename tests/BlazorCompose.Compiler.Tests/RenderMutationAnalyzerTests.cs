@@ -126,86 +126,54 @@ public sealed class RenderMutationAnalyzerTests
         """;
 
     // -----------------------------------------------------------------------
+    // Theory data
+    // -----------------------------------------------------------------------
+
+    /// <summary>Body-path mutations that must each be diagnosed as a BC3001 error.</summary>
+    public static TheoryData<string> MutationSourcesThatReportBC3001 { get; } = BuildTheoryData(
+        IncrementInTextSource,
+        AssignmentInTextSource,
+        CompoundAssignmentInTextSource,
+        DecrementInTextSource,
+        PropertyAssignmentInTextSource,
+        PropertyIncrementInTextSource);
+
+    /// <summary>Deferred mutations (event handlers, helper methods) that must not report BC3001.</summary>
+    public static TheoryData<string> MutationSourcesThatDoNotReportBC3001 { get; } = BuildTheoryData(
+        IncrementInButtonHandlerSource,
+        PropertyIncrementInButtonHandlerSource,
+        HelperMutationSource);
+
+    private static TheoryData<string> BuildTheoryData(params string[] sources)
+    {
+        var data = new TheoryData<string>();
+
+        foreach (var source in sources)
+        {
+            data.Add(source);
+        }
+
+        return data;
+    }
+
+    // -----------------------------------------------------------------------
     // Tests
     // -----------------------------------------------------------------------
 
-    [Fact]
-    public async Task RenderMutationAnalyzer_IncrementInsideBodyText_ReportsBC3001()
+    [Theory]
+    [MemberData(nameof(MutationSourcesThatReportBC3001))]
+    public async Task RenderMutationAnalyzer_MutationInBodyRenderPath_ReportsBC3001(string source)
     {
-        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
-            IncrementInTextSource);
+        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(source);
 
         Assert.Contains(diagnostics, static d => d.Id == "BC3001" && d.Severity == DiagnosticSeverity.Error);
     }
 
-    [Fact]
-    public async Task RenderMutationAnalyzer_AssignmentInsideBodyText_ReportsBC3001()
+    [Theory]
+    [MemberData(nameof(MutationSourcesThatDoNotReportBC3001))]
+    public async Task RenderMutationAnalyzer_DeferredMutation_DoesNotReportBC3001(string source)
     {
-        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
-            AssignmentInTextSource);
-
-        Assert.Contains(diagnostics, static d => d.Id == "BC3001" && d.Severity == DiagnosticSeverity.Error);
-    }
-
-    [Fact]
-    public async Task RenderMutationAnalyzer_CompoundAssignmentInsideBodyText_ReportsBC3001()
-    {
-        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
-            CompoundAssignmentInTextSource);
-
-        Assert.Contains(diagnostics, static d => d.Id == "BC3001" && d.Severity == DiagnosticSeverity.Error);
-    }
-
-    [Fact]
-    public async Task RenderMutationAnalyzer_DecrementInsideBodyText_ReportsBC3001()
-    {
-        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
-            DecrementInTextSource);
-
-        Assert.Contains(diagnostics, static d => d.Id == "BC3001" && d.Severity == DiagnosticSeverity.Error);
-    }
-
-    [Fact]
-    public async Task RenderMutationAnalyzer_PropertyAssignmentInsideBodyText_ReportsBC3001()
-    {
-        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
-            PropertyAssignmentInTextSource);
-
-        Assert.Contains(diagnostics, static d => d.Id == "BC3001" && d.Severity == DiagnosticSeverity.Error);
-    }
-
-    [Fact]
-    public async Task RenderMutationAnalyzer_PropertyIncrementInsideBodyText_ReportsBC3001()
-    {
-        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
-            PropertyIncrementInTextSource);
-
-        Assert.Contains(diagnostics, static d => d.Id == "BC3001" && d.Severity == DiagnosticSeverity.Error);
-    }
-
-    [Fact]
-    public async Task RenderMutationAnalyzer_IncrementInsideButtonHandler_DoesNotReportBC3001()
-    {
-        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
-            IncrementInButtonHandlerSource);
-
-        Assert.DoesNotContain(diagnostics, static d => d.Id == "BC3001");
-    }
-
-    [Fact]
-    public async Task RenderMutationAnalyzer_PropertyIncrementInsideButtonHandler_DoesNotReportBC3001()
-    {
-        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
-            PropertyIncrementInButtonHandlerSource);
-
-        Assert.DoesNotContain(diagnostics, static d => d.Id == "BC3001");
-    }
-
-    [Fact]
-    public async Task RenderMutationAnalyzer_HelperMutationReferencedByBody_DoesNotReportBC3001()
-    {
-        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(
-            HelperMutationSource);
+        var diagnostics = await CompilationTestHost.RunAnalyzerAsync<RenderMutationAnalyzer>(source);
 
         Assert.DoesNotContain(diagnostics, static d => d.Id == "BC3001");
     }

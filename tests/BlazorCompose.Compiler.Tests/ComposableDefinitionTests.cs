@@ -38,7 +38,7 @@ public sealed class ComposableDefinitionTests
 
         var result = CompilationTestHost.RunGenerator(source);
         var diagnostic = Assert.Single(
-            result.Diagnostics.Where(static d => d.Id == "BC1002"));
+            result.Diagnostics, static d => d.Id == "BC1002");
 
         Assert.Contains(message, diagnostic.GetMessage(CultureInfo.InvariantCulture));
     }
@@ -61,7 +61,7 @@ public sealed class ComposableDefinitionTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public sealed class ComposableDefinitionTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        var diagnostic = Assert.Single(result.Diagnostics, static d => d.Id == "BC1002");
         Assert.Contains("parsed", diagnostic.GetMessage(CultureInfo.InvariantCulture));
     }
 
@@ -186,7 +186,7 @@ public sealed class ComposableDefinitionTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        Assert.Empty(result.Diagnostics.Where(static d => d.Id == "BC1002"));
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Id == "BC1002");
     }
 
     [Fact]

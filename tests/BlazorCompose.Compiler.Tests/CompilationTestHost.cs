@@ -187,7 +187,14 @@ public static class CompilationTestHost
             references: BuildMetadataReferences(),
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-    internal static ImmutableArray<MetadataReference> BuildMetadataReferences()
+    /// <summary>
+    /// Builds the metadata references shared by every test compilation: the host process's trusted
+    /// platform assemblies plus <c>Microsoft.AspNetCore.Components</c>.  When <paramref name="includeRuntime"/>
+    /// is <see langword="true"/> (the default) the <c>BlazorCompose.Runtime</c> assembly is also referenced;
+    /// pass <see langword="false"/> when the test defines the <c>BlazorCompose</c> types in-source and must
+    /// not pull in the compiled runtime.
+    /// </summary>
+    internal static ImmutableArray<MetadataReference> BuildMetadataReferences(bool includeRuntime = true)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var references = new List<MetadataReference>();
@@ -206,7 +213,8 @@ public static class CompilationTestHost
         }
 
         // BlazorCompose.Runtime (provides ComposeComponentBase, View, UI)
-        Add(typeof(BlazorCompose.ComposeComponentBase).Assembly.Location);
+        if (includeRuntime)
+            Add(typeof(BlazorCompose.ComposeComponentBase).Assembly.Location);
 
         // Microsoft.AspNetCore.Components (provides ComponentBase, RenderTreeBuilder)
         Add(typeof(ComponentBase).Assembly.Location);
