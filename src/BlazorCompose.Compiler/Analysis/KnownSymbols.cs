@@ -28,11 +28,21 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
     /// <summary>Resolved symbol for <c>BlazorCompose.UI.If(bool, Func&lt;View&gt;, Func&lt;View&gt;?)</c>, or <see langword="null"/> if unavailable.</summary>
     public IMethodSymbol? IfMethod { get; }
 
+    /// <summary>Resolved symbol for <c>BlazorCompose.View</c>, or <see langword="null"/> if unavailable.</summary>
+    public INamedTypeSymbol? ViewType { get; }
+
+    /// <summary>Resolved symbol for <c>BlazorCompose.ComposableAttribute</c>, or <see langword="null"/> if unavailable.</summary>
+    public INamedTypeSymbol? ComposableAttributeType { get; }
+
     // Stable value fingerprint computed once at construction, used for equality/hashing.
     private readonly string _fingerprint;
 
     private KnownSymbols(INamedTypeSymbol uiType)
     {
+        ViewType = uiType.ContainingAssembly.GetTypeByMetadataName("BlazorCompose.View");
+        ComposableAttributeType =
+            uiType.ContainingAssembly.GetTypeByMetadataName("BlazorCompose.ComposableAttribute");
+
         foreach (var member in uiType.GetMembers())
         {
             if (member is not IMethodSymbol method)
@@ -55,7 +65,7 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
             }
         }
 
-        _fingerprint = BuildFingerprint(TextMethod, ButtonMethod, VStackMethod, IfMethod);
+        _fingerprint = BuildFingerprint(TextMethod, ButtonMethod, VStackMethod, IfMethod, ViewType, ComposableAttributeType);
     }
 
     /// <summary>
@@ -91,10 +101,18 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
     /// Produces a deterministic string that changes whenever the semantic signature of any
     /// recognized UI method changes.  Format per method:
     /// <c>ContainingType.Name(ParamType1,ParamType2):ReturnType</c>
-    /// A null method contributes the literal <c>-</c>.
+    /// A null method contributes the literal <c>-</c>.  Trailing type symbols contribute their fully
+    /// qualified names so that changes to the <c>View</c> or <c>ComposableAttribute</c> API surface also
+    /// invalidate downstream modeling.
     /// </summary>
-    private static string BuildFingerprint(params IMethodSymbol?[] methods)
+    private static string BuildFingerprint(
+        IMethodSymbol? text,
+        IMethodSymbol? button,
+        IMethodSymbol? vstack,
+        IMethodSymbol? @if,
+        params INamedTypeSymbol?[] types)
     {
+        var methods = new[] { text, button, vstack, @if };
         var builder = new System.Text.StringBuilder(256);
         for (int i = 0; i < methods.Length; i++)
         {
@@ -120,6 +138,14 @@ internal sealed class KnownSymbols : IEquatable<KnownSymbols>
             builder.Append(')');
             builder.Append(':');
             builder.Append(m.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+        }
+
+        foreach (var type in types)
+        {
+            builder.Append('|');
+            builder.Append(type is null
+                ? "-"
+                : type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
         }
 
         return builder.ToString();

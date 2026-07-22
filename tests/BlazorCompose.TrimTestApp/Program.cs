@@ -11,8 +11,11 @@ public partial class TrimCounter : ComposeComponentBase
 
     protected override View Body =>
         VStack(
-            Text($"Count: {_count}"),
+            CountLabel($"Count: {_count}"),
             Button("Increment", () => _count++));
+
+    [Composable]
+    private static View CountLabel(string value) => Text(value);
 
     public void RenderForTrimTest(RenderTreeBuilder builder)
         => BuildRenderTree(builder);

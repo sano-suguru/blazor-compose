@@ -43,6 +43,22 @@ public sealed class TrimmedOutputTests
     }
 
     [Fact]
+    public void PrivateComposableMethodIsAbsentFromTrimmedAppAssembly()
+    {
+        EnsureOutputDirectoryExists();
+
+        var appAssemblyPath = Path.Combine(
+            TrimOutputDirectory!,
+            "BlazorCompose.TrimTestApp.dll");
+        var methods = GetMethodNames(
+            appAssemblyPath,
+            "TrimCounter",
+            expectedNamespace: "");
+
+        Assert.DoesNotContain("CountLabel", methods);
+    }
+
+    [Fact]
     public void BaseBodyGetterIsAbsentFromTrimmedRuntimeAssembly()
     {
         EnsureOutputDirectoryExists();

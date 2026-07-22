@@ -1,0 +1,239 @@
+using System.Collections.Immutable;
+using System.Threading;
+using BlazorCompose.Compiler.Diagnostics;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+namespace BlazorCompose.Compiler.Analysis;
+
+/// <summary>
+/// Validates a discovered <c>[Composable]</c> method against the supported static-expansion contract and,
+/// when valid, builds its symbol-free <see cref="ComposableDefinition"/>.  Invalid source declarations
+/// still yield a registry <see cref="ComposableDefinitionEntry"/> (with a null definition) plus a single
+/// value-equal BC1002 diagnostic so expansion can distinguish an already-diagnosed source declaration
+/// from a metadata-only method.
+/// </summary>
+internal static class ComposableDefinitionFactory
+{
+    public static ComposableDiscoveryResult Create(
+        GeneratorAttributeSyntaxContext attributeContext,
+        KnownSymbols? knownSymbols,
+        CancellationToken cancellationToken)
+    {
+        var method = (IMethodSymbol)attributeContext.TargetSymbol;
+        var declaration = (MethodDeclarationSyntax)attributeContext.TargetNode;
+
+        var methodKey = MethodKey.Create(method);
+        var displayName = method.Name;
+
+        var invalidReason = ValidateDeclaration(method, declaration, knownSymbols);
+        if (invalidReason is not null)
+            return Invalid(methodKey, displayName, declaration, invalidReason);
+
+        var definition = TryBuildDefinition(
+            attributeContext,
+            method,
+            declaration,
+            knownSymbols!,
+            cancellationToken,
+            out var bodyDiagnostics);
+
+        if (definition is null)
+        {
+            return new ComposableDiscoveryResult(
+                new ComposableDefinitionEntry(methodKey, displayName, Definition: null, DeclarationDiagnosticReported: true),
+                bodyDiagnostics);
+        }
+
+        return new ComposableDiscoveryResult(
+            new ComposableDefinitionEntry(methodKey, displayName, definition, DeclarationDiagnosticReported: false),
+            ImmutableArray<DiagnosticInfo>.Empty);
+    }
+
+    private static string? ValidateDeclaration(
+        IMethodSymbol method,
+        MethodDeclarationSyntax declaration,
+        KnownSymbols? knownSymbols)
+    {
+        if (!method.IsStatic)
+            return "must be static";
+
+        if (method.Arity > 0)
+            return "must be non-generic";
+
+        // A composable declared in a generic containing type (or nested inside one) would leak the
+        // enclosing unbound type parameter — through a parameter type such as 'T value' or a body
+        // reference such as 'typeof(T)' — into the using-less generated component, where that parameter
+        // is not in scope.  Reject the declaration up front rather than emit uncompilable expansion.
+        for (var containingType = method.ContainingType;
+             containingType is not null;
+             containingType = containingType.ContainingType)
+        {
+            if (containingType.Arity > 0)
+                return "containing type must be non-generic";
+        }
+
+        if (declaration.ExpressionBody is null)
+            return "must be expression-bodied";
+
+        var viewType = knownSymbols?.ViewType;
+        if (viewType is null || !SymbolEqualityComparer.Default.Equals(method.ReturnType, viewType))
+            return "must return BlazorCompose.View";
+
+        foreach (var parameter in method.Parameters)
+        {
+            if (parameter.IsParams)
+                return "params parameters are unsupported";
+
+            // A by-reference parameter (ref, out, in, or ref readonly) cannot be reproduced by the
+            // static-expansion contract, which lowers each argument to a plain typed local passed by
+            // value.  Reject every RefKind other than None with a single reason.
+            if (parameter.RefKind != RefKind.None)
+                return "by-reference parameters are unsupported";
+
+            if (SymbolEqualityComparer.Default.Equals(parameter.Type, viewType))
+                return "View parameters are unsupported";
+        }
+
+        return null;
+    }
+
+    private static ComposableDefinition? TryBuildDefinition(
+        GeneratorAttributeSyntaxContext attributeContext,
+        IMethodSymbol method,
+        MethodDeclarationSyntax declaration,
+        KnownSymbols knownSymbols,
+        CancellationToken cancellationToken,
+        out ImmutableArray<DiagnosticInfo> diagnostics)
+    {
+        var ordinals = ImmutableDictionary.CreateBuilder<ISymbol, int>(SymbolEqualityComparer.Default);
+        var parameters = ImmutableArray.CreateBuilder<ComposableParameter>(method.Parameters.Length);
+        foreach (var parameter in method.Parameters)
+        {
+            // A parameter (or optional-default) type that cannot be named from another file — a file-local
+            // type or one otherwise unnameable — would produce invalid generated C# at the expansion site,
+            // so reject the declaration with BC1002 instead.
+            if (IsUnnameableType(parameter.Type))
+            {
+                diagnostics = ImmutableArray.Create(BuildDiagnostic(
+                    declaration,
+                    method.Name,
+                    $"parameter '{parameter.Name}' has a type that cannot be named in generated component code"));
+                return null;
+            }
+
+            ordinals[parameter] = parameter.Ordinal;
+            var typeName = parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            parameters.Add(new ComposableParameter(
+                parameter.Ordinal,
+                parameter.Name,
+                typeName,
+                ComposableParameterKind.Value,
+                parameter.HasExplicitDefaultValue,
+                parameter.HasExplicitDefaultValue
+                    ? ConstantTemplate.ForParameterDefault(parameter, typeName)
+                    : null));
+        }
+
+        var context = new ComposableBodyContext(
+            attributeContext.SemanticModel,
+            method.ContainingType,
+            method.Name,
+            knownSymbols,
+            ordinals.ToImmutable(),
+            cancellationToken);
+
+        var body = RenderExpressionAnalyzer.Analyze(declaration.ExpressionBody!.Expression, context);
+        if (body is null)
+        {
+            // Prefer a specific recorded unsupported-reference diagnostic (for example a referenced local
+            // that cannot exist in generated code) over the generic non-SSC message.
+            diagnostics = context.Diagnostics.Count > 0
+                ? context.Diagnostics.ToImmutable()
+                : ImmutableArray.Create(BuildDiagnostic(
+                    declaration,
+                    method.Name,
+                    "body must be a statically sequenceable expression"));
+            return null;
+        }
+
+        if (context.Diagnostics.Count > 0)
+        {
+            diagnostics = context.Diagnostics.ToImmutable();
+            return null;
+        }
+
+        diagnostics = ImmutableArray<DiagnosticInfo>.Empty;
+        return new ComposableDefinition(
+            MethodKey.Create(method),
+            method.Name,
+            method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            parameters.ToImmutable(),
+            context.AccessRequirements.ToImmutable(),
+            body);
+    }
+
+    private static ComposableDiscoveryResult Invalid(
+        string methodKey,
+        string displayName,
+        MethodDeclarationSyntax declaration,
+        string reason)
+    {
+        var diagnostic = BuildDiagnostic(declaration, displayName, reason);
+        return new ComposableDiscoveryResult(
+            new ComposableDefinitionEntry(methodKey, displayName, Definition: null, DeclarationDiagnosticReported: true),
+            ImmutableArray.Create(diagnostic));
+    }
+
+    private static DiagnosticInfo BuildDiagnostic(
+        MethodDeclarationSyntax declaration,
+        string displayName,
+        string reason) =>
+        DiagnosticInfo.Create(
+            DiagnosticDescriptors.BC1002.Id,
+            declaration.Identifier.GetLocation(),
+            ImmutableArray.Create(displayName, reason));
+
+    /// <summary>
+    /// Determines whether <paramref name="type"/> (or a component of it — array element, pointed-at type,
+    /// generic type argument, or an enclosing type) cannot be referenced by a fully qualified name in a
+    /// generated file, for example a <c>file</c>-local type or an otherwise unnameable type.  Such a type
+    /// would emit invalid C# in a typed argument local, so its composable is rejected at the declaration.
+    /// </summary>
+    private static bool IsUnnameableType(ITypeSymbol type)
+    {
+        switch (type)
+        {
+            case IArrayTypeSymbol array:
+                return IsUnnameableType(array.ElementType);
+
+            case IPointerTypeSymbol pointer:
+                return IsUnnameableType(pointer.PointedAtType);
+
+            case ITypeParameterSymbol:
+                // Composables are validated as non-generic before reaching here.
+                return false;
+
+            case INamedTypeSymbol named:
+                if (named.IsFileLocal || !named.CanBeReferencedByName)
+                    return true;
+
+                for (var containing = named.ContainingType; containing is not null; containing = containing.ContainingType)
+                {
+                    if (containing.IsFileLocal || !containing.CanBeReferencedByName)
+                        return true;
+                }
+
+                foreach (var argument in named.TypeArguments)
+                {
+                    if (IsUnnameableType(argument))
+                        return true;
+                }
+
+                return false;
+
+            default:
+                return false;
+        }
+    }
+}

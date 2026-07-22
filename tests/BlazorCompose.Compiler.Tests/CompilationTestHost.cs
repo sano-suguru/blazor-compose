@@ -27,14 +27,34 @@ public sealed record GeneratorRunResult(
 public static class CompilationTestHost
 {
     /// <summary>
-    /// Parses <paramref name="source"/>, creates a test compilation, runs
+    /// Parses <paramref name="source"/> as a single file, creates a test compilation, runs
     /// <see cref="BlazorComposeGenerator"/>, and returns the updated driver together with all
     /// generated sources, tracked incremental steps, the updated compilation, and generator diagnostics.
     /// </summary>
-    public static GeneratorRunResult RunGenerator(string source)
-    {
-        var compilation = CreateCompilation(source);
+    public static GeneratorRunResult RunGenerator(string source) =>
+        RunGenerator(("Test.cs", source));
 
+    /// <summary>
+    /// Parses each <c>(Path, Source)</c> tuple into its own syntax tree, creates a test compilation, and
+    /// runs the generator.  Multiple files let cross-file expansion semantics (definition in one file,
+    /// call site in another) be exercised.
+    /// </summary>
+    public static GeneratorRunResult RunGenerator(params (string Path, string Source)[] sources)
+    {
+        var syntaxTrees = sources
+            .Select(static source => CSharpSyntaxTree.ParseText(
+                source.Source,
+                CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14),
+                path: source.Path))
+            .ToArray();
+
+        var compilation = CreateCompilation(syntaxTrees);
+        return RunGenerator(compilation);
+    }
+
+    /// <summary>Runs the generator against a pre-built compilation and collects its results.</summary>
+    internal static GeneratorRunResult RunGenerator(CSharpCompilation compilation)
+    {
         var driverOptions = new GeneratorDriverOptions(
             disabledOutputs: default,
             trackIncrementalGeneratorSteps: true);
@@ -60,6 +80,80 @@ public static class CompilationTestHost
     }
 
     /// <summary>
+    /// Asserts that the post-generation <see cref="GeneratorRunResult.OutputCompilation"/> contains no C#
+    /// error diagnostics, so a supported component's generated <c>RenderBody</c> is verified to actually
+    /// compile rather than only inspected as text.  On failure every error is included in the message to
+    /// make the emitted mistake (for example a CS0103 out-of-scope name or a CS0664 mistyped literal)
+    /// immediately visible.
+    /// </summary>
+    public static void AssertOutputCompiles(GeneratorRunResult result)
+    {
+        var errors = result.OutputCompilation
+            .GetDiagnostics()
+            .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToImmutableArray();
+
+        Assert.True(
+            errors.IsEmpty,
+            "Generated output failed to compile: " +
+            string.Join(
+                "; ",
+                errors.Select(static error => error.ToString())));
+    }
+
+    /// <summary>
+    /// Compiles <paramref name="source"/> into an in-memory assembly and returns it as a metadata
+    /// reference so a consuming compilation can reference a <c>[Composable]</c> method that exists only in
+    /// metadata (no source declaration), exercising the metadata-only expansion diagnostic path.
+    /// </summary>
+    public static MetadataReference CompileToMetadataReference(string source, string assemblyName)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(
+            source,
+            CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14));
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName: assemblyName,
+            syntaxTrees: new[] { syntaxTree },
+            references: BuildMetadataReferences(),
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        using var stream = new MemoryStream();
+        var emitResult = compilation.Emit(stream);
+        Assert.True(
+            emitResult.Success,
+            "Metadata reference source failed to compile: " +
+            string.Join("; ", emitResult.Diagnostics.Where(static d => d.Severity == DiagnosticSeverity.Error)));
+
+        stream.Seek(0, SeekOrigin.Begin);
+        return MetadataReference.CreateFromStream(stream);
+    }
+
+    /// <summary>
+    /// Creates a compilation from raw <c>(Path, Source)</c> tuples plus additional metadata references,
+    /// letting tests wire a metadata-only composable definition into the consuming compilation.
+    /// </summary>
+    internal static CSharpCompilation CreateCompilation(
+        (string Path, string Source)[] sources,
+        params MetadataReference[] extraReferences)
+    {
+        var syntaxTrees = sources
+            .Select(static source => CSharpSyntaxTree.ParseText(
+                source.Source,
+                CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14),
+                path: source.Path))
+            .ToArray();
+
+        var references = BuildMetadataReferences().AddRange(extraReferences);
+
+        return CSharpCompilation.Create(
+            assemblyName: "TestAssembly",
+            syntaxTrees: syntaxTrees,
+            references: references,
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    /// <summary>
     /// Parses <paramref name="source"/>, creates a test compilation, runs the analyzer
     /// <typeparamref name="T"/>, and returns the analyzer-owned diagnostics only.
     /// </summary>
@@ -77,20 +171,23 @@ public static class CompilationTestHost
     // Helpers
     // ---------------------------------------------------------------------------
 
-    private static CSharpCompilation CreateCompilation(string source)
+    internal static CSharpCompilation CreateCompilation(string source)
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(
             source,
             CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp14));
 
-        return CSharpCompilation.Create(
-            assemblyName: "TestAssembly",
-            syntaxTrees: new[] { syntaxTree },
-            references: BuildMetadataReferences(),
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        return CreateCompilation(syntaxTree);
     }
 
-    private static ImmutableArray<MetadataReference> BuildMetadataReferences()
+    internal static CSharpCompilation CreateCompilation(params SyntaxTree[] syntaxTrees) =>
+        CSharpCompilation.Create(
+            assemblyName: "TestAssembly",
+            syntaxTrees: syntaxTrees,
+            references: BuildMetadataReferences(),
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+    internal static ImmutableArray<MetadataReference> BuildMetadataReferences()
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var references = new List<MetadataReference>();
