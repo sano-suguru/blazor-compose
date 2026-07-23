@@ -376,13 +376,22 @@ internal static class RenderExpressionAnalyzer
         if (parameterAttribute is null)
             return false;
 
+        // Blazor resolves [Parameter] with inherit:true semantics (it walks the class hierarchy), so a
+        // property that overrides a base [Parameter] without repeating the attribute is still a valid
+        // parameter at runtime. Roslyn's GetAttributes() only sees directly-declared attributes, so walk
+        // the override chain to match Blazor. `new`-shadowing has no OverriddenProperty, so a shadow
+        // without its own [Parameter] correctly stops the walk and is rejected. Explicit interface
+        // implementations never appear in this chain, which matches Blazor ignoring interface [Parameter]s.
         var hasParameterAttribute = false;
-        foreach (var attribute in property.GetAttributes())
+        for (var current = property; current is not null && !hasParameterAttribute; current = current.OverriddenProperty)
         {
-            if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, parameterAttribute))
+            foreach (var attribute in current.GetAttributes())
             {
-                hasParameterAttribute = true;
-                break;
+                if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, parameterAttribute))
+                {
+                    hasParameterAttribute = true;
+                    break;
+                }
             }
         }
 

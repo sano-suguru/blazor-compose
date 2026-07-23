@@ -171,4 +171,88 @@ public sealed class ComponentInteropTests
 
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3007");
     }
+
+    private const string InheritedParamSource = """
+        using Microsoft.AspNetCore.Components;
+        namespace T;
+        public class BaseChild : ComponentBase
+        {
+            [Parameter] public virtual string Value { get; set; } = "";
+        }
+        public class DerivedChild : BaseChild
+        {
+            public override string Value { get; set; } = "";
+        }
+        """;
+
+    [Fact]
+    public void Component_ParamTargetsOverriddenInheritedParameter_DoesNotReportBC3006()
+    {
+        const string host = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            namespace T;
+            public partial class Host : ComposeComponentBase
+            {
+                protected override View Body => Component<DerivedChild>().Param(c => c.Value, "hi");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(("Inherited.cs", InheritedParamSource), ("Host.cs", host));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3006");
+        CompilationTestHost.AssertOutputCompiles(result);
+        var generated = result.GeneratedSources.Single(s => s.HintName.Contains("Host")).SourceText.ToString();
+        Assert.Contains("AddComponentParameter(1, \"Value\", \"hi\")", generated);
+    }
+
+    [Fact]
+    public void Component_ParamTargetsMultiLevelOverriddenParameter_DoesNotReportBC3006()
+    {
+        const string chain = """
+            using Microsoft.AspNetCore.Components;
+            namespace T;
+            public class A : ComponentBase { [Parameter] public virtual string Value { get; set; } = ""; }
+            public class B : A { public override string Value { get; set; } = ""; }
+            public class C : B { public override string Value { get; set; } = ""; }
+            """;
+        const string host = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            namespace T;
+            public partial class Host : ComposeComponentBase
+            {
+                protected override View Body => Component<C>().Param(c => c.Value, "hi");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(("Chain.cs", chain), ("Host.cs", host));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3006");
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void Component_ParamTargetsNewShadowedNonParameter_ReportsBC3006()
+    {
+        const string shadow = """
+            using Microsoft.AspNetCore.Components;
+            namespace T;
+            public class ShadowBase : ComponentBase { [Parameter] public string Value { get; set; } = ""; }
+            public class ShadowDerived : ShadowBase { public new string Value { get; set; } = ""; }
+            """;
+        const string host = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            namespace T;
+            public partial class Host : ComposeComponentBase
+            {
+                protected override View Body => Component<ShadowDerived>().Param(c => c.Value, "hi");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(("Shadow.cs", shadow), ("Host.cs", host));
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3006" && d.Severity == DiagnosticSeverity.Error);
+    }
 }
