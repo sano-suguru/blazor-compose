@@ -124,6 +124,8 @@ internal static class ComponentModelFactory
             return new ComponentModelResult(null, diagnostics.ToImmutable());
         }
 
+        KeyabilityResolver.CollectForEachContentDiagnostics(analysis.Template, registry, diagnostics);
+
         var expansion = ComposableExpander.Expand(
             analysis.Template,
             registry,

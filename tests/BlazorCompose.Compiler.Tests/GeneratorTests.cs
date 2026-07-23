@@ -372,6 +372,84 @@ public sealed class GeneratorTests
     }
 
     [Fact]
+    public void Generator_RegionRootedContentComposableCalledTwice_ReportsBC3003Once()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<Group> _a = new();
+                private readonly List<Group> _b = new();
+                protected override BlazorCompose.View Body =>
+                    VStack(Widget(_a), Widget(_b));
+                [BlazorCompose.Composable]
+                private static BlazorCompose.View Widget(List<Group> gs) =>
+                    ForEach(gs, key: g => g.Id, content: g =>
+                        ForEach(g.Items, key: i => i.Id, content: i => Text(i.Name)));
+                private sealed record Item(int Id, string Name);
+                private sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // Reported once (dedup across the two call sites), and both paths agree: BC3003 fires AND emission
+        // is suppressed (guards resolver/expander keyability from drifting apart).
+        Assert.Single(result.Diagnostics, d => d.Id == "BC3003");
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void Generator_ComponentForEachContentIsRegionRootedComposableCall_ReportsBC3003()
+    {
+        // Case B: the bad ForEach is in the COMPONENT body; its content is a composable call whose body is
+        // region-rooted. Transitive root-kind resolution (registry) must detect this from the component side.
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<Group> _groups = new();
+                protected override BlazorCompose.View Body =>
+                    ForEach(_groups, key: g => g.Id, content: g => Rows(g));
+                [BlazorCompose.Composable]
+                private static BlazorCompose.View Rows(Group g) =>
+                    ForEach(g.Items, key: i => i.Id, content: i => Text(i.Name));
+                private sealed record Item(int Id, string Name);
+                private sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3003" && d.Severity == DiagnosticSeverity.Error);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void Generator_RegionRootedContentInUncalledComposable_StillReportsBC3003()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public static class Widgets
+            {
+                [BlazorCompose.Composable]
+                public static BlazorCompose.View Never(List<Group> gs) =>
+                    ForEach(gs, key: g => g.Id, content: g =>
+                        ForEach(g.Items, key: i => i.Id, content: i => Text(i.Name)));
+                public sealed record Item(int Id, string Name);
+                public sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Single(result.Diagnostics, d => d.Id == "BC3003");
+    }
+
+    [Fact]
     public void Generator_ForEachAcceptsSimpleParenthesizedAndTypedLambdas_AllCompile()
     {
         const string source = """

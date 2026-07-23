@@ -150,15 +150,11 @@ internal static class ComposableExpander
 
                     // The key is applied to the content's root element/component frame. Region-rooted
                     // content (a bare If/ForEach, or a composable whose expanded body is region-rooted)
-                    // has no keyable frame, so report BC3003 and suppress emission.
+                    // has no keyable frame. BC3003 is reported by KeyabilityResolver (reachability-
+                    // independent, deduped per definition/component); suppress emission here so no SetKey
+                    // lands on a region.
                     if (!IsKeyableRoot(content))
-                    {
-                        diagnostics.Add(DiagnosticInfo.Create(
-                            DiagnosticDescriptors.BC3003,
-                            forEach.Location.ToLocation(),
-                            []));
                         return null;
-                    }
 
                     return new ForEachNode(source, key, content, loopVariableName);
                 }
