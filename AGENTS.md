@@ -50,7 +50,7 @@ Target net10.0 as the required baseline. Keep net11.0 features opt-in behind `NE
 - Keep SSC rendering free of runtime UI trees, reflection, and runtime expression compilation. `Component<T>().Param(...)` must compile to static parameter setters and remain trimming/AOT safe.
 - Decorator chains should collapse into the owning element's emitted attributes rather than introduce wrapper nodes or additional frame widths.
 - Preserve bidirectional Razor compatibility: generate `...AsFragment` siblings for `[Composable]` methods and support existing Razor components through `Component<T>()`.
-- Treat diagnostic IDs BC1001, BC2001, BC3001, and BC3002 as published specification contracts.
+- Treat **shipped** diagnostic IDs (those in `AnalyzerReleases.Shipped.md`) as published specification contracts: do not repurpose or remove them. Unshipped IDs are tracked in `AnalyzerReleases.Unshipped.md` and firm up when they ship. (Pre-release, `AnalyzerReleases.Shipped.md` is empty, so no ID is frozen yet — this is intentional; every current ID still lives in `Unshipped`.)
 - Do not revive the rejected interceptor-based or runtime `ref struct` tree architectures unless both papers are explicitly revised with new evidence.
 - Do not present whitepaper performance estimates as measured results. Replace them only with reproducible PoC benchmark data.
 
