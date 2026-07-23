@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 
@@ -170,12 +171,13 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void Generator_UnrecognizedChild_EmitsNoSourceAndReportsCS0534()
+    public void Generator_UnrecognizedChild_ReportsBC1003AndCS0534AndNoSource()
     {
         var result = CompilationTestHost.RunGenerator(UnrecognizedChildSource);
 
         Assert.Empty(result.GeneratedSources);
         Assert.Single(result.OutputCompilation.GetDiagnostics(), static d => d.Id == "CS0534");
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC1003");
     }
 
     // -----------------------------------------------------------------------
@@ -255,6 +257,372 @@ public sealed class GeneratorTests
 
         // No else branch
         Assert.DoesNotContain("else", generated);
+    }
+
+    private const string ForEachComponentSource = """
+        using System.Collections.Generic;
+        using static BlazorCompose.UI;
+
+        public partial class TodoPage : BlazorCompose.ComposeComponentBase
+        {
+            private readonly List<Todo> _items = new();
+
+            protected override BlazorCompose.View Body =>
+                VStack(
+                    ForEach(_items, key: t => t.Id, content: item => Text(item.Title)),
+                    Text("footer"));
+
+            private sealed record Todo(int Id, string Title);
+        }
+        """;
+
+    [Fact]
+    public void Generator_ForEachOverItems_EmitsKeyedForeachRegionWithStableFollowingSequence()
+    {
+        var result = CompilationTestHost.RunGenerator(ForEachComponentSource);
+
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // VStack opens at 0; ForEach region at 1; content Text spans seq 2..3; SetKey consumes none.
+        Assert.Contains("__builder.OpenElement(0, \"div\");", generated);
+        Assert.Contains("__builder.OpenRegion(1);", generated);
+        Assert.Contains("foreach (var __bc_item_", generated);
+        Assert.Contains(" in _items)", generated);
+        Assert.Contains(".Id);", generated);       // SetKey uses the item
+        Assert.Contains(".Title);", generated);    // content uses the item
+        Assert.Contains("__builder.OpenElement(2, \"span\");", generated);
+        Assert.Contains("__builder.AddContent(3,", generated);
+        Assert.Contains("__builder.CloseRegion();", generated);
+        // Following sibling is stable: VStack(1) + ForEach region(1 + content 2) => next span at 4.
+        Assert.Contains("__builder.OpenElement(4, \"span\");", generated);
+        Assert.Contains("__builder.AddContent(5, \"footer\");", generated);
+
+        // SetKey must land on the content root's span frame — after OpenElement(2, "span"), never
+        // after OpenRegion(1). This is the regression guard for the Task-9 render-time defect.
+        int spanIdx = generated.IndexOf("__builder.OpenElement(2, \"span\");", System.StringComparison.Ordinal);
+        int keyIdx = generated.IndexOf("__builder.SetKey(", System.StringComparison.Ordinal);
+        Assert.True(spanIdx >= 0, "content root OpenElement should be emitted");
+        Assert.True(keyIdx > spanIdx, "SetKey must be emitted after the content root's OpenElement");
+
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    private const string NestedForEachInComposableSource = """
+        using System.Collections.Generic;
+        using static BlazorCompose.UI;
+
+        public partial class BoardPage : BlazorCompose.ComposeComponentBase
+        {
+            private readonly List<Column> _columns = new();
+
+            protected override BlazorCompose.View Body => Section("Board", _columns);
+
+            [BlazorCompose.Composable]
+            private static BlazorCompose.View Section(string heading, List<Column> columns) =>
+                VStack(
+                    Text(heading),
+                    ForEach(columns, key: col => col.Id, content: col =>
+                        VStack(ForEach(col.Cards, key: card => card.Id, content: card =>
+                            Text($"{heading}:{col.Name}:{card.Title}")))));
+
+            public sealed record Card(int Id, string Title);
+            public sealed record Column(int Id, string Name, List<Card> Cards);
+        }
+        """;
+
+    [Fact]
+    public void Generator_NestedForEachInComposable_BindsOuterParamOuterItemAndInnerItemToDistinctLocals()
+    {
+        var result = CompilationTestHost.RunGenerator(NestedForEachInComposableSource);
+
+        var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
+
+        // Two distinct loop variables must be emitted — one for the outer `columns` ForEach and one for
+        // the inner `col.Cards` ForEach. If the generator ever collapsed these to a single shared local,
+        // this would drop to 1 and fail here.
+        var loopVars = Regex
+            .Matches(generated, @"foreach \(var (__bc_item_\d+) in ")
+            .Select(m => m.Groups[1].Value)
+            .Distinct()
+            .ToArray();
+        Assert.Equal(2, loopVars.Length);
+
+        // The innermost interpolation ($"{heading}:{col.Name}:{card.Title}") must resolve three distinct
+        // locals: the composable arg local for `heading`, the outer item local for `col`, and the inner
+        // item local for `card`. Extracting the actual identifiers used at that call site (rather than just
+        // matching the member names anywhere in the file) proves the nested loops don't collide or shadow
+        // one another.
+        var interpolation = Regex.Match(
+            generated,
+            @"AddContent\(\d+,\s*\$""\{(__bc_arg_\d+_\d+)\}:\{(__bc_item_\d+)\.Name\}:\{(__bc_item_\d+)\.Title\}""\);");
+        Assert.True(interpolation.Success, $"Expected innermost interpolation not found in:\n{generated}");
+        var outerItemLocal = interpolation.Groups[2].Value;
+        var innerItemLocal = interpolation.Groups[3].Value;
+
+        Assert.NotEqual(outerItemLocal, innerItemLocal);
+        Assert.Contains(outerItemLocal, loopVars);
+        Assert.Contains(innerItemLocal, loopVars);
+
+        CompilationTestHost.AssertOutputCompiles(result);
+        // No BC3002 (every key references its own item).
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3002");
+        // No BC3003: the outer content root is now a VStack (div), a keyable element frame.
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3003");
+    }
+
+    [Fact]
+    public void Generator_ForEachWithRegionRootedContent_ReportsBC3003()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<Group> _groups = new();
+                protected override BlazorCompose.View Body =>
+                    ForEach(_groups, key: g => g.Id, content: g =>
+                        ForEach(g.Items, key: i => i.Id, content: i => Text(i.Name)));
+                private sealed record Item(int Id, string Name);
+                private sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // The outer content root is a bare nested ForEach (region-rooted) — its key has no frame to
+        // attach to, so BC3003 fires and emission is suppressed.
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3003" && d.Severity == DiagnosticSeverity.Error);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void Generator_RegionRootedContentComposableCalledTwice_ReportsBC3003Once()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<Group> _a = new();
+                private readonly List<Group> _b = new();
+                protected override BlazorCompose.View Body =>
+                    VStack(Widget(_a), Widget(_b));
+                [BlazorCompose.Composable]
+                private static BlazorCompose.View Widget(List<Group> gs) =>
+                    ForEach(gs, key: g => g.Id, content: g =>
+                        ForEach(g.Items, key: i => i.Id, content: i => Text(i.Name)));
+                private sealed record Item(int Id, string Name);
+                private sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // Reported once (dedup across the two call sites), and both paths agree: BC3003 fires AND emission
+        // is suppressed (guards resolver/expander keyability from drifting apart).
+        Assert.Single(result.Diagnostics, d => d.Id == "BC3003");
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void Generator_ComponentForEachContentIsRegionRootedComposableCall_ReportsBC3003()
+    {
+        // Case B: the bad ForEach is in the COMPONENT body; its content is a composable call whose body is
+        // region-rooted. Transitive root-kind resolution (registry) must detect this from the component side.
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<Group> _groups = new();
+                protected override BlazorCompose.View Body =>
+                    ForEach(_groups, key: g => g.Id, content: g => Rows(g));
+                [BlazorCompose.Composable]
+                private static BlazorCompose.View Rows(Group g) =>
+                    ForEach(g.Items, key: i => i.Id, content: i => Text(i.Name));
+                private sealed record Item(int Id, string Name);
+                private sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3003" && d.Severity == DiagnosticSeverity.Error);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void Generator_RegionRootedContentInUncalledComposable_StillReportsBC3003()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public static class Widgets
+            {
+                [BlazorCompose.Composable]
+                public static BlazorCompose.View Never(List<Group> gs) =>
+                    ForEach(gs, key: g => g.Id, content: g =>
+                        ForEach(g.Items, key: i => i.Id, content: i => Text(i.Name)));
+                public sealed record Item(int Id, string Name);
+                public sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Single(result.Diagnostics, d => d.Id == "BC3003");
+    }
+
+    [Fact]
+    public void Generator_ForEachAcceptsSimpleParenthesizedAndTypedLambdas_AllCompile()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<int> _xs = new();
+                protected override BlazorCompose.View Body =>
+                    VStack(
+                        ForEach(_xs, key: x => x, content: x => Text(x.ToString())),
+                        ForEach(_xs, key: (x) => x, content: (x) => Text(x.ToString())),
+                        ForEach(_xs, key: (int x) => x, content: (int x) => Text(x.ToString())));
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Single(result.GeneratedSources);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void Generator_ForEachConstantKey_ReportsBC3002()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<int> _xs = new();
+                protected override BlazorCompose.View Body =>
+                    ForEach(_xs, key: _ => 0, content: x => Text(x.ToString()));
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3002" && d.Severity == DiagnosticSeverity.Warning);
+        // A warning must not suppress emission.
+        Assert.Single(result.GeneratedSources);
+        CompilationTestHost.AssertOutputCompiles(result);
+    }
+
+    [Fact]
+    public void Generator_ForEachItemDerivedKey_DoesNotReportBC3002()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<Row> _xs = new();
+                protected override BlazorCompose.View Body =>
+                    ForEach(_xs, key: r => r.Id, content: r => Text(r.Name));
+                private sealed record Row(int Id, string Name);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3002");
+    }
+
+    [Fact]
+    public void Generator_NestedForEachInnerKeyReferencesOnlyOuterItem_ReportsBC3002()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<Group> _groups = new();
+                protected override BlazorCompose.View Body =>
+                    ForEach(_groups, key: g => g.Id, content: g =>
+                        VStack(ForEach(g.Items, key: i => g.Id, content: i => Text(i.Name))));
+                private sealed record Item(int Id, string Name);
+                private sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // Exactly one BC3002 — the inner key references only the outer item, not its own.
+        Assert.Single(result.Diagnostics, d => d.Id == "BC3002");
+    }
+
+    [Fact]
+    public void Generator_BadKeyForEachInComposableCalledTwice_ReportsBC3002Once()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<int> _xs = new();
+                protected override BlazorCompose.View Body => VStack(Widget(_xs), Widget(_xs));
+                [BlazorCompose.Composable]
+                private static BlazorCompose.View Widget(List<int> xs) =>
+                    ForEach(xs, key: _ => 0, content: x => Text(x.ToString()));
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Single(result.Diagnostics, d => d.Id == "BC3002");
+    }
+
+    [Fact]
+    public void Generator_BadKeyForEachInUnreachableComposable_StillReportsBC3002()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public static class Widgets
+            {
+                [BlazorCompose.Composable]
+                public static BlazorCompose.View Never(List<int> xs) =>
+                    ForEach(xs, key: _ => 0, content: x => Text(x.ToString()));
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // Reported at definition-discovery time, independent of any call site.
+        Assert.Single(result.Diagnostics, d => d.Id == "BC3002");
+    }
+
+    [Fact]
+    public void Generator_ForEachWithMethodGroupContent_ReportsBC3004AndProducesNoSource()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<int> _xs = new();
+                protected override BlazorCompose.View Body =>
+                    ForEach(_xs, key: x => x, content: Render);
+                private static BlazorCompose.View Render(int x) => Text(x.ToString());
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        // Non-SSC content (method group, not an inline lambda): recognized ForEach, unanalyzable content.
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3004" && d.Severity == DiagnosticSeverity.Error);
+        Assert.Empty(result.GeneratedSources);
     }
 
     // -----------------------------------------------------------------------

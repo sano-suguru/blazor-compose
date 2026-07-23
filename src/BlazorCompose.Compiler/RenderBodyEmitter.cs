@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Text;
 using BlazorCompose.Compiler.Generation;
 using Microsoft.CodeAnalysis.Text;
@@ -49,29 +50,41 @@ internal static class RenderBodyEmitter
     // Node emission — returns the next available sequence number
     // ---------------------------------------------------------------------------
 
-    private static int EmitNode(IndentedWriter writer, RenderNode node, int startSeq) =>
+    /// <param name="key">
+    /// When non-<see langword="null"/>, a key expression to apply to this node's root element/component
+    /// frame via <c>SetKey</c> immediately after it opens. Supplied only by <see cref="EmitForEach"/> for
+    /// the loop content root; the key is consumed by the first element/component and never propagated to
+    /// children. Region-rooted nodes (<see cref="IfNode"/>, <see cref="ForEachNode"/>) never receive a
+    /// non-<see langword="null"/> key because BC3003 blocks region-rooted content from reaching emission.
+    /// </param>
+    private static int EmitNode(IndentedWriter writer, RenderNode node, int startSeq, string? key = null) =>
         node switch
         {
-            TextNode text => EmitText(writer, text, startSeq),
-            ButtonNode button => EmitButton(writer, button, startSeq),
-            VStackNode vstack => EmitVStack(writer, vstack, startSeq),
-            IfNode ifNode => EmitIf(writer, ifNode, startSeq),
-            ExpansionNode expansion => EmitExpansion(writer, expansion, startSeq),
+            TextNode text => EmitText(writer, text, startSeq, key),
+            ButtonNode button => EmitButton(writer, button, startSeq, key),
+            VStackNode vstack => EmitVStack(writer, vstack, startSeq, key),
+            IfNode ifNode => EmitIf(writer, ifNode, startSeq, key),
+            ExpansionNode expansion => EmitExpansion(writer, expansion, startSeq, key),
+            ForEachNode forEach => EmitForEach(writer, forEach, startSeq, key),
             _ => throw new NotSupportedException(
                 $"Emission for '{node.GetType().Name}' is not yet implemented."),
         };
 
-    private static int EmitText(IndentedWriter writer, TextNode node, int seq)
+    private static int EmitText(IndentedWriter writer, TextNode node, int seq, string? key = null)
     {
         writer.AppendLine($"__builder.OpenElement({seq}, \"span\");");
+        if (key is not null)
+            writer.AppendLine($"__builder.SetKey({key});");
         writer.AppendLine($"__builder.AddContent({seq + 1}, {node.ContentExpression.ToCode()});");
         writer.AppendLine("__builder.CloseElement();");
         return seq + SequenceAllocator.Width(node);
     }
 
-    private static int EmitButton(IndentedWriter writer, ButtonNode node, int seq)
+    private static int EmitButton(IndentedWriter writer, ButtonNode node, int seq, string? key = null)
     {
         writer.AppendLine($"__builder.OpenElement({seq}, \"button\");");
+        if (key is not null)
+            writer.AppendLine($"__builder.SetKey({key});");
         writer.AppendLine(
             $"__builder.AddAttribute({seq + 1}, \"onclick\", " +
             $"{EventCallbackFactory}.Create(this, {node.HandlerExpression.ToCode()}));");
@@ -80,9 +93,11 @@ internal static class RenderBodyEmitter
         return seq + SequenceAllocator.Width(node);
     }
 
-    private static int EmitVStack(IndentedWriter writer, VStackNode node, int seq)
+    private static int EmitVStack(IndentedWriter writer, VStackNode node, int seq, string? key = null)
     {
         writer.AppendLine($"__builder.OpenElement({seq}, \"div\");");
+        if (key is not null)
+            writer.AppendLine($"__builder.SetKey({key});");
         int nextSeq = seq + 1;
         foreach (var child in node.Children)
             nextSeq = EmitNode(writer, child, nextSeq);
@@ -90,8 +105,13 @@ internal static class RenderBodyEmitter
         return nextSeq;
     }
 
-    private static int EmitIf(IndentedWriter writer, IfNode node, int seq)
+    private static int EmitIf(IndentedWriter writer, IfNode node, int seq, string? key = null)
     {
+        // Region-rooted nodes never carry a threaded key: BC3003 blocks region-rooted content from
+        // reaching emission, so a non-null key here would mean a keyable node was wired to this branch
+        // without updating that contract. Fail fast in tests instead of silently dropping SetKey.
+        Debug.Assert(key is null, $"{nameof(EmitIf)} does not support a threaded key; SetKey would be silently dropped.");
+
         // seq is consumed by OpenRegion.
         // then  branch occupies [seq+1, seq+1+W(then)).
         // else  branch occupies [seq+1+W(then), seq+1+W(then)+W(else)).
@@ -123,7 +143,29 @@ internal static class RenderBodyEmitter
         return seq + SequenceAllocator.Width(node);
     }
 
-    private static int EmitExpansion(IndentedWriter writer, ExpansionNode node, int startSeq)
+    private static int EmitForEach(IndentedWriter writer, ForEachNode node, int seq, string? key = null)
+    {
+        // Region-rooted nodes never carry a threaded key: BC3003 blocks region-rooted content from
+        // reaching emission, so a non-null key here would mean a keyable node was wired to this branch
+        // without updating that contract. Fail fast in tests instead of silently dropping SetKey.
+        Debug.Assert(key is null, $"{nameof(EmitForEach)} does not support a threaded key; SetKey would be silently dropped.");
+
+        // seq is consumed by OpenRegion. The content template occupies [seq+1, seq+1+W(content)) and
+        // those sequence numbers are re-emitted every iteration; SetKey carries per-item identity.
+        writer.AppendLine($"__builder.OpenRegion({seq});");
+        writer.AppendLine($"foreach (var {node.LoopVariableName} in {node.Source.ToCode()})");
+        writer.AppendLine("{");
+        writer.Indent++;
+        // The key is threaded into the content's root element/component so SetKey is emitted
+        // immediately after that frame opens — never after OpenRegion (see BC3003).
+        EmitNode(writer, node.Content, seq + 1, node.Key.ToCode());
+        writer.Indent--;
+        writer.AppendLine("}");
+        writer.AppendLine("__builder.CloseRegion();");
+        return seq + SequenceAllocator.Width(node);
+    }
+
+    private static int EmitExpansion(IndentedWriter writer, ExpansionNode node, int startSeq, string? key = null)
     {
         foreach (var local in node.Locals)
         {
@@ -131,7 +173,8 @@ internal static class RenderBodyEmitter
                 $"{local.TypeName} {local.Name} = {local.Initializer.ToCode()};");
         }
 
-        return EmitNode(writer, node.Body, startSeq);
+        // Forward the key to the composable body's root element/component.
+        return EmitNode(writer, node.Body, startSeq, key);
     }
 
     /// <summary>

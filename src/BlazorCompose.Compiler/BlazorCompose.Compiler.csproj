@@ -3,7 +3,8 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-    <!-- BC1001-BC3002 are published specification contracts for this project.
+    <!-- Diagnostic IDs and their descriptors live in Diagnostics/DiagnosticDescriptors.cs and are tracked
+         in AnalyzerReleases.{Shipped,Unshipped}.md (the RS2000 source of truth).
          Suppress RS1029 because the 'BC' prefix is otherwise reserved for VB compiler diagnostics. -->
     <NoWarn>$(NoWarn);RS1029</NoWarn>
   </PropertyGroup>

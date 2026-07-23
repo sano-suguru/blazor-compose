@@ -46,7 +46,7 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
             static (productionContext, result) =>
             {
                 foreach (var diagnostic in result.Diagnostics)
-                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic(DiagnosticDescriptors.BC1002));
+                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic());
             });
 
         // Collect every source composable entry — including invalid declarations — into a
@@ -56,6 +56,23 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
             .Collect()
             .Select(static (entries, _) => ComposableRegistry.Create(entries))
             .WithTrackingName("ComposableRegistry");
+
+        // Report BC3003 for region-rooted ForEach content inside composable definition bodies, once per
+        // definition and independent of whether the composable is ever called. Registry-dependent by
+        // nature (transitive root-kind resolution), and separate from BC3002/BC3004 so their per-definition
+        // incrementality is unaffected.
+        var composableForEachDiagnostics = registry
+            .Select(static (r, _) =>
+                (EquatableArray<DiagnosticInfo>)KeyabilityResolver.CollectComposableForEachDiagnostics(r))
+            .WithTrackingName("ComposableForEachDiagnostics");
+
+        context.RegisterSourceOutput(
+            composableForEachDiagnostics,
+            static (productionContext, diagnostics) =>
+            {
+                foreach (var diagnostic in diagnostics)
+                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic());
+            });
 
         // Expand each analyzed component against the registry as a pure value transform.  Both inputs are
         // value-equal, so an unchanged rerun is Cached/Unchanged even on the diagnostic branch, and a
@@ -72,7 +89,7 @@ public sealed class BlazorComposeGenerator : IIncrementalGenerator
             static (productionContext, result) =>
             {
                 foreach (var diagnostic in result.Diagnostics)
-                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic(DiagnosticDescriptors.BC1002));
+                    productionContext.ReportDiagnostic(diagnostic.ToDiagnostic());
             });
 
         // Add source only when a final model exists.

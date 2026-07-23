@@ -13,8 +13,10 @@ namespace BlazorCompose.Compiler;
 /// semantic work (resolving <c>BlazorCompose.UI</c> symbols and classifying the body) happens in the
 /// transform that produces this value, and only value data flows onward to be combined with the
 /// composable registry. <see cref="Template"/> is <see langword="null"/> when the body is not a
-/// recognized statically-sequenceable construct; <see cref="BodyDiagnostics"/> is non-empty when
-/// normalization rejected the body.
+/// recognized statically-sequenceable construct. <see cref="BodyDiagnostics"/> carries every diagnostic
+/// normalization recorded — both errors that reject the body and warnings (for example BC3002) that do
+/// not — so downstream emission gates on <see cref="DiagnosticInfo.IsError"/> severity rather than on
+/// this collection being non-empty.
 /// </remarks>
 internal sealed record ComponentAnalysis(
     string HintName,

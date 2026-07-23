@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -91,6 +92,63 @@ internal static class RenderExpressionAnalyzer
                 ExpressionTemplateFactory.Create(condition, context),
                 thenNode,
                 otherwiseNode);
+        }
+
+        if (SymbolEqualityComparer.Default.Equals(method.OriginalDefinition, symbols.ForEachMethod))
+        {
+            var sourceExpression = invocation.ArgumentList.Arguments[0].Expression;
+            if (!TryExtractSingleParameterLambda(
+                    invocation.ArgumentList.Arguments[1].Expression, out var keyParameter, out var keyBody)
+                || !TryExtractSingleParameterLambda(
+                    invocation.ArgumentList.Arguments[2].Expression, out var contentParameter, out var contentBody))
+            {
+                context.Diagnostics.Add(DiagnosticInfo.Create(
+                    DiagnosticDescriptors.BC3004,
+                    invocation.GetLocation(),
+                    []));
+                return null;
+            }
+
+            if (context.SemanticModel.GetDeclaredSymbol(keyParameter, context.CancellationToken) is not { } keyParamSymbol
+                || context.SemanticModel.GetDeclaredSymbol(contentParameter, context.CancellationToken) is not { } contentParamSymbol)
+            {
+                context.Diagnostics.Add(DiagnosticInfo.Create(
+                    DiagnosticDescriptors.BC3004,
+                    invocation.GetLocation(),
+                    []));
+                return null;
+            }
+
+            // Source references the enclosing scope (fields, composable params, outer items) — never this
+            // item — so it is normalized before the iteration variable is registered.
+            var source = ExpressionTemplateFactory.Create(sourceExpression, context);
+
+            var itemOrdinal = context.PushIterationVariable(contentParamSymbol, keyParamSymbol);
+            try
+            {
+                var key = ExpressionTemplateFactory.Create(keyBody, context);
+                var content = Analyze(contentBody, context);
+                if (content is null)
+                    return null;
+
+                if (!KeyReferencesItemOrdinal(key, itemOrdinal))
+                {
+                    context.Diagnostics.Add(DiagnosticInfo.Create(
+                        DiagnosticDescriptors.BC3002,
+                        invocation.ArgumentList.Arguments[1].GetLocation(),
+                        []));
+                }
+
+                return new ForEachTemplateNode(
+                    source,
+                    key,
+                    content,
+                    TemplateLocation.From(invocation.GetLocation()));
+            }
+            finally
+            {
+                context.PopIterationVariable(contentParamSymbol, keyParamSymbol);
+            }
         }
 
         if (IsComposable(method, context))
@@ -188,4 +246,41 @@ internal static class RenderExpressionAnalyzer
         SimpleLambdaExpressionSyntax { Body: ExpressionSyntax body } => body,
         _ => null,
     };
+
+    private static bool TryExtractSingleParameterLambda(
+        ExpressionSyntax expression,
+        out ParameterSyntax parameter,
+        out ExpressionSyntax body)
+    {
+        switch (expression)
+        {
+            case SimpleLambdaExpressionSyntax { Body: ExpressionSyntax simpleBody } simple:
+                parameter = simple.Parameter;
+                body = simpleBody;
+                return true;
+            // A list pattern ([var single]) on a SeparatedSyntaxList requires System.Index.GetOffset,
+            // which is unavailable on netstandard2.0 (CS0656); match the single-parameter shape with an
+            // explicit count check instead.
+            case ParenthesizedLambdaExpressionSyntax { Body: ExpressionSyntax parenBody } paren
+                when paren.ParameterList.Parameters.Count == 1:
+                parameter = paren.ParameterList.Parameters[0];
+                body = parenBody;
+                return true;
+            default:
+                parameter = null!;
+                body = null!;
+                return false;
+        }
+    }
+
+    private static bool KeyReferencesItemOrdinal(ExpressionTemplate key, int itemOrdinal)
+    {
+        foreach (var segment in key.Segments)
+        {
+            if (segment is ParameterHoleExpressionSegment hole && hole.ParameterOrdinal == itemOrdinal)
+                return true;
+        }
+
+        return false;
+    }
 }

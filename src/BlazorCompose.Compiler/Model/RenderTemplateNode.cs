@@ -50,3 +50,9 @@ internal sealed record ComposableCallTemplateNode(
     string DisplayName,
     EquatableArray<ComposableInvocationArgument> Arguments,
     TemplateLocation Location) : RenderTemplateNode;
+
+internal sealed record ForEachTemplateNode(
+    ExpressionTemplate Source,
+    ExpressionTemplate Key,
+    RenderTemplateNode Content,
+    TemplateLocation Location) : RenderTemplateNode;

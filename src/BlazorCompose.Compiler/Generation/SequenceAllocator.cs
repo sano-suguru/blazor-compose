@@ -37,6 +37,10 @@ internal static class SequenceAllocator
 
         ExpansionNode { Body: var body } => Width(body),
 
+        // OpenRegion(k) = 1 call; SetKey/CloseRegion/foreach consume no sequence number.
+        // The content template occupies one static sequence space reused each iteration.
+        ForEachNode { Content: var content } => 1 + Width(content),
+
         _ => throw new NotSupportedException(
             $"Unknown RenderNode type '{node.GetType().Name}'; add a Width case for it."),
     };

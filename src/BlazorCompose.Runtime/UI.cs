@@ -33,4 +33,15 @@ public static class UI
     /// <param name="otherwise">The optional branch rendered when <paramref name="condition"/> is <see langword="false"/>.</param>
     /// <returns>Inert design-time syntax; always the default <see cref="View"/> at runtime.</returns>
     public static View If(bool condition, Func<View> then, Func<View>? otherwise = null) => default;
+
+    /// <summary>Design-time syntax for a keyed list: one <paramref name="content"/> template per item.</summary>
+    /// <typeparam name="T">The element type of <paramref name="source"/>.</typeparam>
+    /// <param name="source">The sequence rendered one template per element.</param>
+    /// <param name="key">Selects a value identifying each item; drives Blazor's keyed diffing.</param>
+    /// <param name="content">Produces the template for one item.</param>
+    /// <returns>Inert design-time syntax; always the default <see cref="View"/> at runtime.</returns>
+    public static View ForEach<T>(
+        System.Collections.Generic.IEnumerable<T> source,
+        System.Func<T, object?> key,
+        System.Func<T, View> content) => default;
 }

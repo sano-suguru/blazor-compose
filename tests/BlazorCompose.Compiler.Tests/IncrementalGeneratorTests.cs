@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using BlazorCompose.Compiler.Analysis;
+using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -527,6 +528,56 @@ public sealed class IncrementalGeneratorTests
             Assert.True(
                 output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged,
                 $"Expected ComposableRegistry Cached/Unchanged but got {output.Reason}"));
+    }
+
+    /// <summary>
+    /// An identical rerun with the same compilation must reuse the composable ForEach diagnostics output
+    /// (Cached/Unchanged) rather than recomputing a distinct-but-equal <see cref="EquatableArray{T}"/>.
+    /// This guards the <c>(EquatableArray&lt;DiagnosticInfo&gt;)</c> cast on the "ComposableForEachDiagnostics"
+    /// step in <c>BlazorComposeGenerator</c>: if that cast were reverted to a raw
+    /// <see cref="ImmutableArray{T}"/>, the step's output would compare by underlying-array reference
+    /// instead of by structural value, so this identical rerun would report Modified instead of
+    /// Cached/Unchanged and this test would fail.
+    /// </summary>
+    [Fact]
+    public void IncrementalGenerator_OnIdenticalRerun_CachesComposableForEachDiagnostics()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public static class Widgets
+            {
+                [BlazorCompose.Composable]
+                public static BlazorCompose.View Never(List<Group> gs) =>
+                    ForEach(gs, key: g => g.Id, content: g =>
+                        ForEach(g.Items, key: i => i.Id, content: i => Text(i.Name)));
+                public sealed record Item(int Id, string Name);
+                public sealed record Group(int Id, List<Item> Items);
+            }
+            """;
+
+        var tree = ParseTree(source, "Widgets.cs");
+        var compilation = CreateCompilation(tree);
+        GeneratorDriver driver = CreateDriver();
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        var run2 = driver.GetRunResult();
+
+        var diagnosticsOutputs = run2.Results[0].TrackedSteps["ComposableForEachDiagnostics"]
+            .SelectMany(s => s.Outputs).ToImmutableArray();
+
+        // Sanity check: the step must have actually produced the BC3003 diagnostic (nested ForEach with
+        // a region-rooted content root), not an empty array — otherwise this test would trivially pass
+        // without ever exercising the EquatableArray value-equality path.
+        Assert.Contains(diagnosticsOutputs, output =>
+            output.Value is EquatableArray<DiagnosticInfo> diagnostics &&
+            diagnostics.AsImmutableArray().Any(d => d.Id == "BC3003"));
+
+        Assert.All(diagnosticsOutputs, output =>
+            Assert.True(
+                output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged,
+                $"Expected ComposableForEachDiagnostics Cached/Unchanged but got {output.Reason}"));
     }
 
     /// <summary>

@@ -32,7 +32,7 @@ internal sealed record ExpressionTemplate
             {
                 LiteralExpressionSegment literal => literal,
                 ParameterHoleExpressionSegment hole =>
-                    new LiteralExpressionSegment(localNames[hole.ParameterOrdinal]),
+                    SubstituteHole(hole, localNames),
                 _ => throw new InvalidOperationException(
                     $"Unknown expression segment '{segment.GetType().Name}'."),
             });
@@ -56,6 +56,16 @@ internal sealed record ExpressionTemplate
         }
 
         return builder.ToString();
+    }
+
+    private static LiteralExpressionSegment SubstituteHole(
+        ParameterHoleExpressionSegment hole,
+        ImmutableArray<string> localNames)
+    {
+        System.Diagnostics.Debug.Assert(
+            hole.ParameterOrdinal < localNames.Length,
+            $"Hole ordinal {hole.ParameterOrdinal} exceeds substitution length {localNames.Length}; the ForEach/composable ordinal invariant is broken.");
+        return new LiteralExpressionSegment(localNames[hole.ParameterOrdinal]);
     }
 
     private static ImmutableArray<ExpressionSegment> CoalesceLiterals(

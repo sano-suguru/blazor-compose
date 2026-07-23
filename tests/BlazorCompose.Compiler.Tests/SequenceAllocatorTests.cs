@@ -114,4 +114,18 @@ public sealed class SequenceAllocatorTests
 
         Assert.Equal(2, SequenceAllocator.Width(node));
     }
+
+    [Fact]
+    public void SequenceAllocator_ForEachNode_HasWidthOfOnePlusContentWidth()
+    {
+        var content = new TextNode(ExpressionTemplate.Literal("__bc_item_0.Title"));
+
+        var node = new ForEachNode(
+            Source: ExpressionTemplate.Literal("_items"),
+            Key: ExpressionTemplate.Literal("__bc_item_0.Id"),
+            Content: content,
+            LoopVariableName: "__bc_item_0");
+
+        Assert.Equal(1 + SequenceAllocator.Width(content), SequenceAllocator.Width(node));
+    }
 }

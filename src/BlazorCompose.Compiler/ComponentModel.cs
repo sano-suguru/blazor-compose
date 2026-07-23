@@ -33,10 +33,6 @@ internal sealed record ComponentModel(
 /// </remarks>
 internal sealed record ComponentModelResult
 {
-    /// <summary>A shared result carrying neither a model nor diagnostics.</summary>
-    public static ComponentModelResult None { get; } =
-        new(null, []);
-
     public ComponentModelResult(ComponentModel? model, ImmutableArray<DiagnosticInfo> diagnostics)
     {
         Model = model;
