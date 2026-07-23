@@ -32,4 +32,43 @@ public sealed class DiagnosticPipelineTests
         Assert.Contains(result.Diagnostics, d => d.Id == "BC3002" && d.Severity == DiagnosticSeverity.Warning);
         Assert.Contains(result.Diagnostics, d => d.Id == "BC3003" && d.Severity == DiagnosticSeverity.Error);
     }
+
+    [Fact]
+    public void ComponentBody_UnrecognizedConstruct_ReportsBc1003AndNoSource()
+    {
+        // A non-factory, non-composable call returning View reaches the model stage with a null template.
+        const string source = """
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                protected override BlazorCompose.View Body => Opaque();
+                private static BlazorCompose.View Opaque() => default;
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC1003" && d.Severity == DiagnosticSeverity.Error);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void ComponentBody_WithBc3004_DoesNotAlsoReportBc1003()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using static BlazorCompose.UI;
+            public partial class P : BlazorCompose.ComposeComponentBase
+            {
+                private readonly List<int> _xs = new();
+                protected override BlazorCompose.View Body => ForEach(_xs, key: x => x, content: Render);
+                private static BlazorCompose.View Render(int x) => Text(x.ToString());
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(source);
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3004");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC1003");
+    }
 }

@@ -170,12 +170,13 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void Generator_UnrecognizedChild_EmitsNoSourceAndReportsCS0534()
+    public void Generator_UnrecognizedChild_ReportsBC1003AndCS0534AndNoSource()
     {
         var result = CompilationTestHost.RunGenerator(UnrecognizedChildSource);
 
         Assert.Empty(result.GeneratedSources);
         Assert.Single(result.OutputCompilation.GetDiagnostics(), static d => d.Id == "CS0534");
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC1003");
     }
 
     // -----------------------------------------------------------------------
@@ -580,7 +581,7 @@ public sealed class GeneratorTests
     }
 
     [Fact]
-    public void Generator_ForEachWithMethodGroupContent_ProducesNoSourceWithoutCrashing()
+    public void Generator_ForEachWithMethodGroupContent_ReportsBC3004AndProducesNoSource()
     {
         const string source = """
             using System.Collections.Generic;
@@ -596,7 +597,8 @@ public sealed class GeneratorTests
 
         var result = CompilationTestHost.RunGenerator(source);
 
-        // Non-SSC content (method group, not an inline lambda): no generated RenderBody, no exception.
+        // Non-SSC content (method group, not an inline lambda): recognized ForEach, unanalyzable content.
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3004" && d.Severity == DiagnosticSeverity.Error);
         Assert.Empty(result.GeneratedSources);
     }
 

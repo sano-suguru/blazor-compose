@@ -102,12 +102,20 @@ internal static class RenderExpressionAnalyzer
                 || !TryExtractSingleParameterLambda(
                     invocation.ArgumentList.Arguments[2].Expression, out var contentParameter, out var contentBody))
             {
+                context.Diagnostics.Add(DiagnosticInfo.Create(
+                    DiagnosticDescriptors.BC3004,
+                    invocation.GetLocation(),
+                    []));
                 return null;
             }
 
             if (context.SemanticModel.GetDeclaredSymbol(keyParameter, context.CancellationToken) is not { } keyParamSymbol
                 || context.SemanticModel.GetDeclaredSymbol(contentParameter, context.CancellationToken) is not { } contentParamSymbol)
             {
+                context.Diagnostics.Add(DiagnosticInfo.Create(
+                    DiagnosticDescriptors.BC3004,
+                    invocation.GetLocation(),
+                    []));
                 return null;
             }
 
