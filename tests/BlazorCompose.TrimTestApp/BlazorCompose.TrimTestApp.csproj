@@ -18,6 +18,22 @@
     <PackageReference Include="BlazorCompose" />
   </ItemGroup>
 
+  <!-- Scoped IL2072 suppression for the framework's reflection-based [Parameter] binder
+       (Microsoft.AspNetCore.Components.Reflection.ComponentProperties.SetProperties). See
+       ILLink.LinkAttributes.xml for the full rationale.
+
+       Embedding the file as an "ILLink.LinkAttributes.xml" resource does NOT work here: the
+       linker rejects (IL2101) an embedded LinkAttributes file whose assembly fullname element
+       targets an assembly other than the one embedding it; that mechanism is only for an
+       assembly to annotate itself, and we cannot embed anything into the framework's own DLL.
+       Instead, feed the file straight to the linker as an independent link attributes input,
+       via the _ILLinkSuppressions item, which Microsoft.NET.ILLink.targets turns into that
+       linker argument (see the PrepareForILLink target). This is the same plumbing runtime
+       packs use to ship their own cross-assembly trim-suppression profiles. -->
+  <ItemGroup>
+    <_ILLinkSuppressions Include="ILLink.LinkAttributes.xml" />
+  </ItemGroup>
+
   <!-- Cross-platform cache purge: delete only the isolated 0.1.0-dev cache before restore
        so NuGet cannot reuse stale package contents for the fixed development version.
        Only fires during actual NuGet restore (MSBuildRestoreSessionId is set). -->
