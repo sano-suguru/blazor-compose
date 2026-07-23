@@ -95,9 +95,9 @@ internal static class KeyabilityResolver
                     CollectForEachContentDiagnostics(ifNode.Otherwise, registry, sink);
                 break;
 
-            // Text/Button/ComposableCall have no nested template children to walk. A composable call's
-            // own body is walked once from the registry pass (CollectComposableForEachDiagnostics), not
-            // re-walked at every call site.
+                // Text/Button/ComposableCall have no nested template children to walk. A composable call's
+                // own body is walked once from the registry pass (CollectComposableForEachDiagnostics), not
+                // re-walked at every call site.
         }
     }
 
