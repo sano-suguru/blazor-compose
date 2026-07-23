@@ -356,12 +356,9 @@ public sealed class GeneratorTests
             generated,
             @"AddContent\(\d+,\s*\$""\{(__bc_arg_\d+_\d+)\}:\{(__bc_item_\d+)\.Name\}:\{(__bc_item_\d+)\.Title\}""\);");
         Assert.True(interpolation.Success, $"Expected innermost interpolation not found in:\n{generated}");
-        var argLocal = interpolation.Groups[1].Value;
         var outerItemLocal = interpolation.Groups[2].Value;
         var innerItemLocal = interpolation.Groups[3].Value;
 
-        Assert.NotEqual(argLocal, outerItemLocal);
-        Assert.NotEqual(argLocal, innerItemLocal);
         Assert.NotEqual(outerItemLocal, innerItemLocal);
         Assert.Contains(outerItemLocal, loopVars);
         Assert.Contains(innerItemLocal, loopVars);
