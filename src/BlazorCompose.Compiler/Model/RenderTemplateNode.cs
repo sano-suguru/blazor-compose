@@ -55,5 +55,4 @@ internal sealed record ForEachTemplateNode(
     ExpressionTemplate Source,
     ExpressionTemplate Key,
     RenderTemplateNode Content,
-    int ItemOrdinal,
     TemplateLocation Location) : RenderTemplateNode;

@@ -135,7 +135,6 @@ internal static class RenderExpressionAnalyzer
                     source,
                     key,
                     content,
-                    itemOrdinal,
                     TemplateLocation.From(invocation.GetLocation()));
             }
             finally
