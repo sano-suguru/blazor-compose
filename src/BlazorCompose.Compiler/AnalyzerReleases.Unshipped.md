@@ -11,3 +11,4 @@ BC3003 | BlazorCompose | Error | BlazorComposeGenerator
 BC3004 | BlazorCompose | Error | BlazorComposeGenerator
 BC3005 | BlazorCompose | Error | BlazorComposeGenerator
 BC3006 | BlazorCompose | Error | BlazorComposeGenerator
+BC3007 | BlazorCompose | Error | BlazorComposeGenerator

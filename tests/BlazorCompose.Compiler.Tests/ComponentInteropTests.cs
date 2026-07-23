@@ -132,4 +132,43 @@ public sealed class ComponentInteropTests
         Assert.True(firstIdx >= 0, "first parameter should be emitted");
         Assert.True(secondIdx > firstIdx, "AddComponentParameter calls must appear in source order");
     }
+
+    [Fact]
+    public void Component_DuplicateParamOnSameProperty_ReportsBC3007AndNoSource()
+    {
+        const string host = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            namespace T;
+            public partial class Host : ComposeComponentBase
+            {
+                protected override View Body =>
+                    Component<Child>().Param(c => c.Label, "a").Param(c => c.Label, "b");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(("Child.cs", ChildSource), ("Host.cs", host));
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "BC3007" && d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(result.GeneratedSources, s => s.HintName.Contains("Host"));
+    }
+
+    [Fact]
+    public void Component_DistinctParams_DoNotReportBC3007()
+    {
+        const string host = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            namespace T;
+            public partial class Host : ComposeComponentBase
+            {
+                protected override View Body =>
+                    Component<Child>().Param(c => c.Label, "a").Param(c => c.Title, "b");
+            }
+            """;
+
+        var result = CompilationTestHost.RunGenerator(("Child.cs", ChildSource), ("Host.cs", host));
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3007");
+    }
 }

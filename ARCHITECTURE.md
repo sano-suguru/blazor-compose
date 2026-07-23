@@ -394,6 +394,7 @@ public closed union ViewNode
 | BC3003 | Error   | `ForEach` の `content` が単一の要素/コンポーネントを根に持たず、キーを適用できない(根がリージョンになる裸の `if`/`ForEach` 等)。内側を容器要素で包む(例: `VStack(...)`)必要がある |
 | BC3005 | Error   | `Component<T>().Param` のセレクタが単純なプロパティ選択(`c => c.Prop`)でない(キャスト/メソッド呼び出し/捕捉変数のメンバー等) |
 | BC3006 | Error   | `Component<T>().Param` の対象が settable な `[Parameter]` プロパティでない(実行時 throw を防ぐためコンパイル時に拒否) |
+| BC3007 | Error   | `Component<T>().Param` のチェーンが同一プロパティを複数回バインドしている(Blazorは最後の値のみ適用するため重複はコンパイル時に拒否) |
 
 ## 付録B: 検討した代替アーキテクチャと不採用理由
 

@@ -186,6 +186,16 @@ internal static class RenderExpressionAnalyzer
                 return null;
             }
 
+            foreach (var existing in inner.Parameters.AsImmutableArray())
+            {
+                if (string.Equals(existing.Name, property.Name, System.StringComparison.Ordinal))
+                {
+                    context.Diagnostics.Add(DiagnosticInfo.Create(
+                        DiagnosticDescriptors.BC3007, selector.GetLocation(), [property.Name]));
+                    return null;
+                }
+            }
+
             var value = ExpressionTemplateFactory.Create(valueExpression, context);
             var appended = inner.Parameters.AsImmutableArray().Add(new ComponentParameter(property.Name, value));
             return new ComponentTemplateNode(inner.TypeName, appended);

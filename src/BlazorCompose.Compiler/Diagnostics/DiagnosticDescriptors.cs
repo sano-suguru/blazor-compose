@@ -160,6 +160,23 @@ internal static class DiagnosticDescriptors
             "any other member would throw at runtime when Blazor applies the parameters.");
 
     /// <summary>
+    /// BC3007: A <c>Component&lt;T&gt;().Param</c> chain binds the same property more than once. Blazor
+    /// silently applies the last binding, so a duplicate is almost certainly a mistake; it is rejected at
+    /// compile time rather than allowed to shadow a value at runtime.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BC3007 = new(
+        id: "BC3007",
+        title: "Component parameter is bound more than once",
+        messageFormat: "'{0}' is bound more than once; remove the duplicate .Param(...) call",
+        category: "BlazorCompose",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description:
+            "Component<T>().Param must bind each parameter at most once per chain. Binding the same " +
+            "property twice makes the earlier value dead — Blazor applies the last write — so the " +
+            "duplicate is reported at compile time.");
+
+    /// <summary>
     /// Every declared descriptor, discovered reflectively from this type's public static
     /// <see cref="DiagnosticDescriptor"/> fields so a newly added descriptor registers automatically and
     /// <see cref="ById"/> cannot drift out of sync. Declared after the descriptor fields so their static
