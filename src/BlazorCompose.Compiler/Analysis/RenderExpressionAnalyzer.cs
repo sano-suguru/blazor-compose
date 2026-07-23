@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -178,15 +179,15 @@ internal static class RenderExpressionAnalyzer
                 return null;
             }
 
-            if (!IsSettableParameter(property!, context))
+            if (!IsSettableParameter(property, context))
             {
                 context.Diagnostics.Add(DiagnosticInfo.Create(
-                    DiagnosticDescriptors.BC3006, selector.GetLocation(), [property!.Name]));
+                    DiagnosticDescriptors.BC3006, selector.GetLocation(), [property.Name]));
                 return null;
             }
 
             var value = ExpressionTemplateFactory.Create(valueExpression, context);
-            var appended = inner.Parameters.AsImmutableArray().Add(new ComponentParameter(property!.Name, value));
+            var appended = inner.Parameters.AsImmutableArray().Add(new ComponentParameter(property.Name, value));
             return new ComponentTemplateNode(inner.TypeName, appended);
         }
 
@@ -329,9 +330,11 @@ internal static class RenderExpressionAnalyzer
     /// and members of a captured variable (whose receiver binds to something other than the parameter).
     /// </summary>
     private static bool TryGetSelectorProperty(
-        ExpressionSyntax selector, ComposableBodyContext context, out IPropertySymbol? property)
+        ExpressionSyntax selector, ComposableBodyContext context, [MaybeNullWhen(false)] out IPropertySymbol property)
     {
-        property = null;
+        // Sentinel for the false-return paths; MaybeNullWhen(false) documents that callers must not
+        // read it unless the method returned true, so no call site needs a null-forgiving operator.
+        property = null!;
 
         if (!TryExtractSingleParameterLambda(selector, out var parameter, out var body))
             return false;
