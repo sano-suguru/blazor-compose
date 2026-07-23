@@ -125,7 +125,7 @@ internal static class RenderExpressionAnalyzer
 
                 if (!KeyReferencesItemOrdinal(key, itemOrdinal))
                 {
-                    context.Warnings.Add(DiagnosticInfo.Create(
+                    context.Diagnostics.Add(DiagnosticInfo.Create(
                         DiagnosticDescriptors.BC3002,
                         invocation.ArgumentList.Arguments[1].GetLocation(),
                         []));

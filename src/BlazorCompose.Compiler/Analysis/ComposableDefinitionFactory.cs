@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
@@ -157,13 +158,15 @@ internal static class ComposableDefinitionFactory
             return null;
         }
 
-        if (context.Diagnostics.Count > 0)
+        if (context.Diagnostics.Any(static d => d.IsError))
         {
             diagnostics = context.Diagnostics.ToImmutable();
             return null;
         }
 
-        diagnostics = context.Warnings.ToImmutable();
+        // Only non-error diagnostics (for example BC3002) remain; the definition is valid and its
+        // warnings are still surfaced.
+        diagnostics = context.Diagnostics.ToImmutable();
         return new ComposableDefinition(
             MethodKey.Create(method),
             method.Name,

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using BlazorCompose.Compiler.Analysis;
 using BlazorCompose.Compiler.Diagnostics;
@@ -93,8 +94,7 @@ internal static class ComponentModelFactory
             Namespace: namespaceName,
             InheritanceKeys: BuildInheritanceKeys(symbol),
             Template: template,
-            BodyDiagnostics: bodyContext.Diagnostics.ToImmutable(),
-            BodyWarnings: bodyContext.Warnings.ToImmutable());
+            BodyDiagnostics: bodyContext.Diagnostics.ToImmutable());
     }
 
     /// <summary>
@@ -104,30 +104,35 @@ internal static class ComponentModelFactory
     /// </summary>
     internal static ComponentModelResult Expand(ComponentAnalysis analysis, ComposableRegistry registry)
     {
-        // Body normalization can record BC1002 for a reference that cannot exist in the using-less
-        // generated RenderBody (for example a null-conditional extension receiver that cannot be
-        // rewritten to a static call).  Surface those diagnostics and suppress emission instead of
-        // discarding them and emitting a broken RenderBody.
-        if (!analysis.BodyDiagnostics.IsDefaultOrEmpty)
-            return new ComponentModelResult(null, analysis.BodyDiagnostics.AsImmutableArray());
+        var diagnostics = ImmutableArray.CreateBuilder<DiagnosticInfo>();
+        diagnostics.AddRange(analysis.BodyDiagnostics.AsImmutableArray());
 
-        // An unrecognized or unsupported Body shape must not produce an empty RenderBody; returning a
-        // model-less result here causes CS0534 in the user's compilation, which is the correct failure
-        // signal until the Opaque/BC2001 path is implemented.
+        // An unrecognized/unsupported Body shape yields no template; the abstract RenderBody then triggers
+        // CS0534 in the user's compilation. Add a BlazorCompose-specific BC1003 unless the body already
+        // produced an actionable diagnostic (dedup), so the failure is explained rather than opaque.
         if (analysis.Template is null)
-            return ComponentModelResult.None;
+        {
+            // Emit BC1003 unless an actionable ERROR was already recorded (e.g. BC3004/BC1002). A
+            // warning-only body with a null template still gets BC1003, so a null template always yields
+            // at least one error diagnostic (the S4 invariant). Do NOT gate on Count==0: a co-located
+            // BC3002 warning must not suppress BC1003.
+            if (!diagnostics.Any(static d => d.IsError))
+                diagnostics.Add(DiagnosticInfo.Create(
+                    DiagnosticDescriptors.BC1003,
+                    Location.None,
+                    [analysis.ClassName]));
+            return new ComponentModelResult(null, diagnostics.ToImmutable());
+        }
 
         var expansion = ComposableExpander.Expand(
             analysis.Template,
             registry,
             analysis.InheritanceKeys.AsImmutableArray());
+        diagnostics.AddRange(expansion.Diagnostics);
 
-        // Call-site expansion failures surface as BC1002; do not also emit a partial RenderBody.
-        if (!expansion.Diagnostics.IsDefaultOrEmpty)
-            return new ComponentModelResult(null, expansion.Diagnostics);
-
-        if (expansion.Node is null)
-            return ComponentModelResult.None;
+        var hasError = diagnostics.Any(static d => d.IsError);
+        if (hasError || expansion.Node is null)
+            return new ComponentModelResult(null, diagnostics.ToImmutable());
 
         var model = new ComponentModel(
             HintName: analysis.HintName,
@@ -135,7 +140,7 @@ internal static class ComponentModelFactory
             Namespace: analysis.Namespace,
             RootNode: expansion.Node);
 
-        return new ComponentModelResult(model, analysis.BodyWarnings.AsImmutableArray());
+        return new ComponentModelResult(model, diagnostics.ToImmutable());
     }
 
     /// <summary>

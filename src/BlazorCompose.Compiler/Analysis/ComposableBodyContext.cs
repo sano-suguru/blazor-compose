@@ -34,7 +34,6 @@ internal sealed class ComposableBodyContext
         CancellationToken = cancellationToken;
         AccessRequirements = ImmutableArray.CreateBuilder<ComposableAccessRequirement>();
         Diagnostics = ImmutableArray.CreateBuilder<DiagnosticInfo>();
-        Warnings = ImmutableArray.CreateBuilder<DiagnosticInfo>();
     }
 
     public SemanticModel SemanticModel { get; }
@@ -49,10 +48,13 @@ internal sealed class ComposableBodyContext
 
     public ImmutableArray<ComposableAccessRequirement>.Builder AccessRequirements { get; }
 
+    /// <summary>
+    /// All diagnostics recorded while normalizing this body, both errors (for example BC1002) and
+    /// warnings (for example BC3002). Definition/model validity is gated on <see cref="DiagnosticInfo.IsError"/>
+    /// severity, not on this collection being non-empty, so a warning-only body still builds successfully
+    /// and surfaces its warnings.
+    /// </summary>
     public ImmutableArray<DiagnosticInfo>.Builder Diagnostics { get; }
-
-    /// <summary>Non-fatal warnings (for example BC3002). Never gates definition building.</summary>
-    public ImmutableArray<DiagnosticInfo>.Builder Warnings { get; }
 
     public bool TryGetParameterOrdinal(ISymbol symbol, out int ordinal)
     {
@@ -102,12 +104,17 @@ internal sealed class ComposableBodyContext
     /// Records a single declaration-time BC1002 for a body that references a symbol which cannot exist
     /// in generated component code (for example a local function or a local declared in an enclosing
     /// scope).  Only the first such reference is reported so a body yields exactly one declaration
-    /// diagnostic regardless of how many unsupported references it contains.
+    /// diagnostic regardless of how many unsupported references it contains.  The dedup guard is
+    /// id-specific — it only suppresses a second BC1002 — so it never drops an unrelated diagnostic (for
+    /// example a co-located BC3002 warning) that was recorded first.
     /// </summary>
     public void ReportUnsupportedReference(Location location, string reason)
     {
-        if (Diagnostics.Count > 0)
-            return;
+        foreach (var existing in Diagnostics)
+        {
+            if (existing.Id == DiagnosticDescriptors.BC1002.Id)
+                return;
+        }
 
         Diagnostics.Add(DiagnosticInfo.Create(
             DiagnosticDescriptors.BC1002,
