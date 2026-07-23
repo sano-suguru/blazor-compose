@@ -5,9 +5,11 @@ namespace BlazorCompose;
 /// </summary>
 /// <remarks>
 /// Every member is inert design-time syntax: the BlazorCompose source generator analyzes calls to
-/// these methods and emits the equivalent <c>RenderTreeBuilder</c> instructions into the component's
-/// generated <c>RenderBody</c>. The methods are never meant to run — at runtime they return the
-/// default <see cref="View"/> and perform no work, so they must not be invoked directly.
+/// these members and emits the equivalent <c>RenderTreeBuilder</c> instructions into the component's
+/// generated <c>RenderBody</c>. The members are never meant to run — at runtime they perform no work
+/// and return only a default value (the default <see cref="View"/>, or a default builder such as
+/// <see cref="ComponentView{TComponent}"/> that itself yields a default <see cref="View"/>), so they
+/// must not be invoked directly.
 /// </remarks>
 public static class UI
 {
