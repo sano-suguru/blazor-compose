@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Shared pre-push hook: verify formatting before sharing, mirroring the CI gate
+# (`dotnet format --verify-no-changes`), which is stricter than the build's
+# EnforceCodeStyleInBuild and is the fastest-failing CI check.
+#
+# Enable once per clone: git config core.hooksPath eng/hooks
+#
+# pre-push passes "<remote> <url>" as args and ref lines on stdin; not needed here.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if ! command -v dotnet >/dev/null 2>&1; then
+  echo "pre-push: 'dotnet' not found on PATH; skipping format check." >&2
+  exit 0
+fi
+
+echo "pre-push: verifying formatting (dotnet format --verify-no-changes)..." >&2
+if ! dotnet format BlazorCompose.slnx --verify-no-changes --no-restore; then
+  echo >&2
+  echo "pre-push: formatting check failed. Fix with:" >&2
+  echo "    dotnet format BlazorCompose.slnx" >&2
+  echo "then re-commit and push again. (Bypass in an emergency with: git push --no-verify)" >&2
+  exit 1
+fi
+
+echo "pre-push: formatting OK." >&2

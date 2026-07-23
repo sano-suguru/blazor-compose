@@ -15,6 +15,7 @@ This repository now has its initial .NET foundation in place. `DESIGN.md` (desig
 
 - Restore: `dotnet restore BlazorCompose.slnx`
 - Build: `dotnet build BlazorCompose.slnx --no-restore`
+- Format check (CI gate; run before pushing): `dotnet format BlazorCompose.slnx --verify-no-changes --no-restore` (auto-fix with `dotnet format BlazorCompose.slnx`). This is stricter than the build's `EnforceCodeStyleInBuild` and CI fails on it.
 - Test all: `dotnet test BlazorCompose.slnx --no-build`
 - Test one project: `dotnet test tests/BlazorCompose.Compiler.Tests/BlazorCompose.Compiler.Tests.csproj --no-build`
 - Test one case: `dotnet test tests/BlazorCompose.Compiler.Tests/BlazorCompose.Compiler.Tests.csproj --no-build --filter FullyQualifiedName~GeneratorTests`
@@ -25,6 +26,8 @@ This repository now has its initial .NET foundation in place. `DESIGN.md` (desig
 - Publish trimmed (linux-x64): `dotnet publish tests/BlazorCompose.TrimTestApp/BlazorCompose.TrimTestApp.csproj -c Release -r linux-x64 --self-contained true --configfile tests/BlazorCompose.TrimTestApp/NuGet.config`
 - Run trim tests: `BLAZORCOMPOSE_TRIM_OUTPUT=$(pwd)/tests/BlazorCompose.TrimTestApp/bin/Release/net10.0/osx-arm64/publish dotnet test tests/BlazorCompose.TrimTests/BlazorCompose.TrimTests.csproj`
 - Hot Reload (sample): `dotnet watch --project samples/BlazorCompose.Samples.Counter/BlazorCompose.Samples.Counter.csproj`
+
+Enable the shared pre-push hook once per clone so the format check runs before every push: `git config core.hooksPath eng/hooks`. The hook (`eng/hooks/pre-push`) runs `dotnet format --verify-no-changes` and blocks the push on drift, mirroring the CI gate.
 
 ## Architecture
 
