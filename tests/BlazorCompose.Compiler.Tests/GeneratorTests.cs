@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 
@@ -336,10 +337,35 @@ public sealed class GeneratorTests
 
         var generated = Assert.Single(result.GeneratedSources).SourceText.ToString();
 
-        // Two distinct loop variables, distinct from the composable arg locals.
-        Assert.Contains("foreach (var __bc_item_", generated);
-        // The innermost interpolation references the composable parameter (heading -> __bc_arg local),
-        // the outer item (col), and the inner item (card) — all resolved, and the output compiles.
+        // Two distinct loop variables must be emitted — one for the outer `columns` ForEach and one for
+        // the inner `col.Cards` ForEach. If the generator ever collapsed these to a single shared local,
+        // this would drop to 1 and fail here.
+        var loopVars = Regex
+            .Matches(generated, @"foreach \(var (__bc_item_\d+) in ")
+            .Select(m => m.Groups[1].Value)
+            .Distinct()
+            .ToArray();
+        Assert.Equal(2, loopVars.Length);
+
+        // The innermost interpolation ($"{heading}:{col.Name}:{card.Title}") must resolve three distinct
+        // locals: the composable arg local for `heading`, the outer item local for `col`, and the inner
+        // item local for `card`. Extracting the actual identifiers used at that call site (rather than just
+        // matching the member names anywhere in the file) proves the nested loops don't collide or shadow
+        // one another.
+        var interpolation = Regex.Match(
+            generated,
+            @"AddContent\(\d+,\s*\$""\{(__bc_arg_\d+_\d+)\}:\{(__bc_item_\d+)\.Name\}:\{(__bc_item_\d+)\.Title\}""\);");
+        Assert.True(interpolation.Success, $"Expected innermost interpolation not found in:\n{generated}");
+        var argLocal = interpolation.Groups[1].Value;
+        var outerItemLocal = interpolation.Groups[2].Value;
+        var innerItemLocal = interpolation.Groups[3].Value;
+
+        Assert.NotEqual(argLocal, outerItemLocal);
+        Assert.NotEqual(argLocal, innerItemLocal);
+        Assert.NotEqual(outerItemLocal, innerItemLocal);
+        Assert.Contains(outerItemLocal, loopVars);
+        Assert.Contains(innerItemLocal, loopVars);
+
         CompilationTestHost.AssertOutputCompiles(result);
         // No BC3002 (every key references its own item).
         Assert.DoesNotContain(result.Diagnostics, d => d.Id == "BC3002");

@@ -46,6 +46,10 @@ public sealed class RenderingTests : BunitContext
     [Fact]
     public void KeyedList_WhenRotateClicked_RerendersRowsInNewOrder()
     {
+        // NOTE: rows are stateless Text, so this asserts render order only; it does NOT discriminate keyed
+        // from index/broken keys (both produce identical markup after a reorder). The keying guarantee is
+        // locked at the generator level (SetKey emitted on the content root with the item-derived key); an
+        // end-to-end state-preservation test requires a stateful content primitive (see tracking Issue).
         var cut = Render<KeyedListComponent>();
 
         cut.MarkupMatches(
