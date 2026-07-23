@@ -77,4 +77,41 @@ public sealed class RenderingTests : BunitContext
         cut.FindAll("button")[2].Click();
         cut.Find("span").MarkupMatches("<span>Total: 15</span>");
     }
+
+    [Fact]
+    public void KeyedComponentList_WhenRowStateChangedThenRotated_StatePreservedFollowsItem()
+    {
+        // Positive control: key = item identity. Per-row component state (an internal counter) must
+        // follow its item across a reorder — impossible to observe with stateless rows, and it would
+        // break under a positional key (see the negative-control test below).
+        var cut = Render<StatefulKeyedListComponent>();
+
+        // Rows start a:0, b:0, c:0. Increment the first row (a) twice.
+        cut.FindAll("button")[0].Click();
+        cut.FindAll("button")[0].Click();
+        Assert.Equal("a:2", cut.FindAll("span")[0].TextContent);
+
+        // Rotate -> order becomes b, c, a. Item a is now last; its counter followed it.
+        cut.FindAll("button")[3].Click();
+        Assert.Equal("b:0", cut.FindAll("span")[0].TextContent);
+        Assert.Equal("a:2", cut.FindAll("span")[2].TextContent);
+    }
+
+    [Fact]
+    public void PositionKeyedComponentList_WhenRowStateChangedThenRotated_StateStaysAtPosition()
+    {
+        // Negative control: key = list position (index). State sticks to the DOM position, not the item,
+        // so after a reorder the position-0 row shows the new item's label with the OLD counter. This is
+        // the index-key failure mode ARCHITECTURE.md 2.7(B) describes; contrasting it with the positive
+        // test proves the key is load-bearing.
+        var cut = Render<PositionKeyedListComponent>();
+
+        cut.FindAll("button")[0].Click();
+        cut.FindAll("button")[0].Click();
+        Assert.Equal("a:2", cut.FindAll("span")[0].TextContent);
+
+        // Rotate -> labels become b, c, a. Position 0 now shows b but keeps the counter (2).
+        cut.FindAll("button")[3].Click();
+        Assert.Equal("b:2", cut.FindAll("span")[0].TextContent);
+    }
 }
