@@ -35,4 +35,15 @@ public sealed class DiagnosticInfoTests
 
         Assert.False(info.IsError);
     }
+
+    [Theory]
+    [InlineData("BC3005")]
+    [InlineData("BC3006")]
+    public void ById_ResolvesNewComponentDiagnostics_AsErrors(string id)
+    {
+        var descriptor = BlazorCompose.Compiler.Diagnostics.DiagnosticDescriptors.ById(id);
+
+        Assert.Equal(id, descriptor.Id);
+        Assert.Equal(Microsoft.CodeAnalysis.DiagnosticSeverity.Error, descriptor.DefaultSeverity);
+    }
 }
