@@ -35,7 +35,7 @@ internal static class KeyabilityResolver
         HashSet<string> activeKeys) =>
         node switch
         {
-            TextTemplateNode or ButtonTemplateNode or VStackTemplateNode => ContentRootKind.Element,
+            TextTemplateNode or ButtonTemplateNode or VStackTemplateNode or ComponentTemplateNode => ContentRootKind.Element,
             IfTemplateNode or ForEachTemplateNode => ContentRootKind.Region,
             ComposableCallTemplateNode call => ResolveCall(call, registry, activeKeys),
             _ => ContentRootKind.Unresolved,
