@@ -66,6 +66,7 @@ internal static class RenderBodyEmitter
             IfNode ifNode => EmitIf(writer, ifNode, startSeq, key),
             ExpansionNode expansion => EmitExpansion(writer, expansion, startSeq, key),
             ForEachNode forEach => EmitForEach(writer, forEach, startSeq, key),
+            ComponentNode component => EmitComponent(writer, component, startSeq, key),
             _ => throw new NotSupportedException(
                 $"Emission for '{node.GetType().Name}' is not yet implemented."),
         };
@@ -175,6 +176,23 @@ internal static class RenderBodyEmitter
 
         // Forward the key to the composable body's root element/component.
         return EmitNode(writer, node.Body, startSeq, key);
+    }
+
+    private static int EmitComponent(IndentedWriter writer, ComponentNode node, int seq, string? key = null)
+    {
+        // TypeName already carries the global:: prefix (fully qualified format).
+        writer.AppendLine($"__builder.OpenComponent<{node.TypeName}>({seq});");
+        if (key is not null)
+            writer.AppendLine($"__builder.SetKey({key});");
+        int next = seq + 1;
+        foreach (var parameter in node.Parameters)
+        {
+            writer.AppendLine(
+                $"__builder.AddComponentParameter({next}, \"{parameter.Name}\", {parameter.Value.ToCode()});");
+            next++;
+        }
+        writer.AppendLine("__builder.CloseComponent();");
+        return seq + SequenceAllocator.Width(node);
     }
 
     /// <summary>

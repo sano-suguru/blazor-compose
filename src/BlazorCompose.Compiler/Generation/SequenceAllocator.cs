@@ -41,6 +41,10 @@ internal static class SequenceAllocator
         // The content template occupies one static sequence space reused each iteration.
         ForEachNode { Content: var content } => 1 + Width(content),
 
+        // OpenComponent(k) = 1 call, plus one AddComponentParameter per parameter.
+        // SetKey/CloseComponent consume no sequence number.
+        ComponentNode { Parameters: var parameters } => 1 + parameters.Length,
+
         _ => throw new NotSupportedException(
             $"Unknown RenderNode type '{node.GetType().Name}'; add a Width case for it."),
     };
