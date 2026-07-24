@@ -127,6 +127,56 @@ internal static class DiagnosticDescriptors
             "expression lambda, wrapping any helper call as x => Helper(x).");
 
     /// <summary>
+    /// BC3005: A <c>Component&lt;T&gt;().Param</c> selector is not a simple property selection on its own
+    /// lambda parameter (for example <c>c =&gt; c.Label</c>). Casts, method calls, null-conditional access,
+    /// or a member of a captured variable cannot be turned into a static parameter setter.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BC3005 = new(
+        id: "BC3005",
+        title: "Component parameter selector must be a simple property selection",
+        messageFormat: "Component parameter selector must select a property of the lambda parameter, such as c => c.Label",
+        category: "BlazorCompose",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description:
+            "Component<T>().Param takes a selector of the form c => c.Property so the source generator can " +
+            "emit a static parameter setter. A cast, method call, null-conditional access, or a member of a " +
+            "captured variable cannot be statically resolved to a parameter name.");
+
+    /// <summary>
+    /// BC3006: A <c>Component&lt;T&gt;().Param</c> target is not a settable <c>[Parameter]</c> property.
+    /// Setting a non-parameter (or a parameter with no accessible setter) would throw at runtime, so it is
+    /// rejected at compile time.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BC3006 = new(
+        id: "BC3006",
+        title: "Component parameter target must be a settable [Parameter] property",
+        messageFormat: "'{0}' is not a settable [Parameter] property; Param can only bind properties marked [Parameter] with an accessible setter",
+        category: "BlazorCompose",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description:
+            "Component<T>().Param can only bind a property marked [Parameter] with a public setter. Binding " +
+            "any other member would throw at runtime when Blazor applies the parameters.");
+
+    /// <summary>
+    /// BC3007: A <c>Component&lt;T&gt;().Param</c> chain binds the same property more than once. Blazor
+    /// silently applies the last binding, so a duplicate is almost certainly a mistake; it is rejected at
+    /// compile time rather than allowed to shadow a value at runtime.
+    /// </summary>
+    public static readonly DiagnosticDescriptor BC3007 = new(
+        id: "BC3007",
+        title: "Component parameter is bound more than once",
+        messageFormat: "'{0}' is bound more than once; remove the duplicate .Param(...) call",
+        category: "BlazorCompose",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description:
+            "Component<T>().Param must bind each parameter at most once per chain. Binding the same " +
+            "property twice makes the earlier value dead — Blazor applies the last write — so the " +
+            "duplicate is reported at compile time.");
+
+    /// <summary>
     /// Every declared descriptor, discovered reflectively from this type's public static
     /// <see cref="DiagnosticDescriptor"/> fields so a newly added descriptor registers automatically and
     /// <see cref="ById"/> cannot drift out of sync. Declared after the descriptor fields so their static

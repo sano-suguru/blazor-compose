@@ -159,6 +159,14 @@ internal static class ComposableExpander
                     return new ForEachNode(source, key, content, loopVariableName);
                 }
 
+            case ComponentTemplateNode component:
+                {
+                    var parameters = ImmutableArray.CreateBuilder<ComponentParameter>(component.Parameters.Length);
+                    foreach (var parameter in component.Parameters)
+                        parameters.Add(new ComponentParameter(parameter.Name, parameter.Value.Substitute(substitution)));
+                    return new ComponentNode(component.TypeName, parameters.ToImmutable());
+                }
+
             case ComposableCallTemplateNode call:
                 return ExpandCall(
                     call,
@@ -334,13 +342,13 @@ internal static class ComposableExpander
     /// Determines whether an expanded content node's root frame is a single element or component (and so
     /// can carry a <c>SetKey</c>). <see cref="ExpansionNode"/> is transparent — its composable body's root
     /// is the real frame — so it is unwrapped. Element/component-rooted nodes (<see cref="TextNode"/>,
-    /// <see cref="ButtonNode"/>, <see cref="VStackNode"/>) are keyable; region-rooted nodes
-    /// (<see cref="IfNode"/>, <see cref="ForEachNode"/>) are not.
+    /// <see cref="ButtonNode"/>, <see cref="VStackNode"/>, <see cref="ComponentNode"/>) are keyable;
+    /// region-rooted nodes (<see cref="IfNode"/>, <see cref="ForEachNode"/>) are not.
     /// </summary>
     private static bool IsKeyableRoot(RenderNode node) => node switch
     {
         ExpansionNode expansion => IsKeyableRoot(expansion.Body),
-        TextNode or ButtonNode or VStackNode => true,
+        TextNode or ButtonNode or VStackNode or ComponentNode => true,
         _ => false,
     };
 

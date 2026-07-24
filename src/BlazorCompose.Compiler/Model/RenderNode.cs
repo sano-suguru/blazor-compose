@@ -41,3 +41,17 @@ internal sealed record ForEachNode(
     ExpressionTemplate Key,
     RenderNode Content,
     string LoopVariableName) : RenderNode;
+
+/// <summary>A single statically-bound component parameter: its name and value expression template.</summary>
+/// <remarks>Shared by <see cref="ComponentTemplateNode"/> (holes intact) and <see cref="ComponentNode"/>
+/// (holes substituted). Symbol-free and value-equal.</remarks>
+internal sealed record ComponentParameter(string Name, ExpressionTemplate Value);
+
+/// <summary>
+/// Represents a <c>Component&lt;T&gt;().Param(...)</c> call. Emits <c>OpenComponent&lt;T&gt;</c> followed by
+/// one <c>AddComponentParameter</c> per parameter (in source order) and <c>CloseComponent</c>.
+/// <see cref="TypeName"/> is the fully qualified component type (already prefixed with <c>global::</c>).
+/// </summary>
+internal sealed record ComponentNode(
+    string TypeName,
+    EquatableArray<ComponentParameter> Parameters) : RenderNode;

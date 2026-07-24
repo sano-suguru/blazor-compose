@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using BlazorCompose;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 using static BlazorCompose.UI;
 
@@ -8,15 +10,24 @@ component.RenderForTrimTest(new RenderTreeBuilder());
 public partial class TrimCounter : ComposeComponentBase
 {
     private int _count;
+    private readonly List<Row> _rows = [new Row(1, "First")];
 
     protected override View Body =>
         VStack(
             CountLabel($"Count: {_count}"),
-            Button("Increment", () => _count++));
+            Button("Increment", () => _count++),
+            ForEach(_rows, key: r => r.Id, content: r => Component<DummyRow>().Param(c => c.Text, r.Label)));
 
     [Composable]
     private static View CountLabel(string value) => Text(value);
 
     public void RenderForTrimTest(RenderTreeBuilder builder)
         => BuildRenderTree(builder);
+
+    private sealed record Row(int Id, string Label);
+}
+
+public sealed class DummyRow : ComponentBase
+{
+    [Parameter] public string Text { get; set; } = "";
 }

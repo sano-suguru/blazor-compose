@@ -56,3 +56,7 @@ internal sealed record ForEachTemplateNode(
     ExpressionTemplate Key,
     RenderTemplateNode Content,
     TemplateLocation Location) : RenderTemplateNode;
+
+internal sealed record ComponentTemplateNode(
+    string TypeName,
+    EquatableArray<ComponentParameter> Parameters) : RenderTemplateNode;

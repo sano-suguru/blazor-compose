@@ -76,6 +76,21 @@ public sealed class TrimmedOutputTests
         Assert.DoesNotContain("Button", methods);
         Assert.DoesNotContain("VStack", methods);
         Assert.DoesNotContain("If", methods);
+        Assert.DoesNotContain("ForEach", methods);
+        Assert.DoesNotContain("Component", methods);
+    }
+
+    [Fact]
+    public void TrimmedRuntime_AfterPublish_TrimsComponentViewBuilderType()
+    {
+        var runtimeAssemblyPath = ResolvePublishedAssembly(RuntimeAssemblyFileName);
+
+        // ComponentView<T> is an inert design-time builder with no runtime caller, so the whole type
+        // should be trimmed. Its metadata TypeDef.Name is "ComponentView`1" (backtick + arity); assert
+        // no type whose name starts with "ComponentView" survives in the BlazorCompose namespace.
+        Assert.False(
+            HasTypeStartingWith(runtimeAssemblyPath, "ComponentView", expectedNamespace: "BlazorCompose"),
+            "ComponentView<T> builder type should be trimmed from the runtime assembly.");
     }
 
     [Fact]
@@ -128,6 +143,33 @@ public sealed class TrimmedOutputTests
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Returns whether any type in <paramref name="expectedNamespace"/> has a metadata name starting with
+    /// <paramref name="namePrefix"/>. Used for generic types whose metadata name carries a `arity suffix
+    /// (e.g. "ComponentView`1"), where an exact-name match would silently miss.
+    /// </summary>
+    private static bool HasTypeStartingWith(string assemblyPath, string namePrefix, string expectedNamespace)
+    {
+        using var fileStream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(fileStream);
+        var metadataReader = peReader.GetMetadataReader();
+
+        foreach (var typeDefHandle in metadataReader.TypeDefinitions)
+        {
+            var typeDef = metadataReader.GetTypeDefinition(typeDefHandle);
+            var name = metadataReader.GetString(typeDef.Name);
+            var ns = metadataReader.GetString(typeDef.Namespace);
+
+            if (name.StartsWith(namePrefix, StringComparison.Ordinal) &&
+                string.Equals(ns, expectedNamespace, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using BlazorCompose.Compiler.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -151,6 +152,55 @@ internal static class RenderExpressionAnalyzer
             }
         }
 
+        if (SymbolEqualityComparer.Default.Equals(method.OriginalDefinition, symbols.ComponentMethod))
+        {
+            // Base case: UI.Component<T>() with no .Param yet.
+            var typeName = method.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            return new ComponentTemplateNode(typeName, EquatableArray<ComponentParameter>.Empty);
+        }
+
+        if (SymbolEqualityComparer.Default.Equals(method.OriginalDefinition, symbols.ParamMethod))
+        {
+            // Chained: <ComponentView<T> receiver>.Param(selector, value). Recurse into the receiver to
+            // reach the base Component<T>() (or an inner .Param), then append this parameter in source order.
+            if (invocation.Expression is not MemberAccessExpressionSyntax paramAccess
+                || Analyze(paramAccess.Expression, context) is not ComponentTemplateNode inner)
+            {
+                return null;
+            }
+
+            var selector = invocation.ArgumentList.Arguments[0].Expression;
+            var valueExpression = invocation.ArgumentList.Arguments[1].Expression;
+
+            if (!TryGetSelectorProperty(selector, context, out var property))
+            {
+                context.Diagnostics.Add(DiagnosticInfo.Create(
+                    DiagnosticDescriptors.BC3005, selector.GetLocation(), []));
+                return null;
+            }
+
+            if (!IsSettableParameter(property, context))
+            {
+                context.Diagnostics.Add(DiagnosticInfo.Create(
+                    DiagnosticDescriptors.BC3006, selector.GetLocation(), [property.Name]));
+                return null;
+            }
+
+            foreach (var existing in inner.Parameters.AsImmutableArray())
+            {
+                if (string.Equals(existing.Name, property.Name, System.StringComparison.Ordinal))
+                {
+                    context.Diagnostics.Add(DiagnosticInfo.Create(
+                        DiagnosticDescriptors.BC3007, selector.GetLocation(), [property.Name]));
+                    return null;
+                }
+            }
+
+            var value = ExpressionTemplateFactory.Create(valueExpression, context);
+            var appended = inner.Parameters.AsImmutableArray().Add(new ComponentParameter(property.Name, value));
+            return new ComponentTemplateNode(inner.TypeName, appended);
+        }
+
         if (IsComposable(method, context))
         {
             var arguments = CreateInvocationArguments(invocation, method, context);
@@ -282,5 +332,69 @@ internal static class RenderExpressionAnalyzer
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Succeeds only when <paramref name="selector"/> is <c>p =&gt; p.Property</c> — a member access whose
+    /// receiver is the lambda's own single parameter. Rejects casts, method calls, null-conditional access,
+    /// and members of a captured variable (whose receiver binds to something other than the parameter).
+    /// </summary>
+    private static bool TryGetSelectorProperty(
+        ExpressionSyntax selector, ComposableBodyContext context, [MaybeNullWhen(false)] out IPropertySymbol property)
+    {
+        // Sentinel for the false-return paths; MaybeNullWhen(false) documents that callers must not
+        // read it unless the method returned true, so no call site needs a null-forgiving operator.
+        property = null!;
+
+        if (!TryExtractSingleParameterLambda(selector, out var parameter, out var body))
+            return false;
+
+        if (body is not MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax receiver } memberAccess)
+            return false;
+
+        if (context.SemanticModel.GetDeclaredSymbol(parameter, context.CancellationToken) is not { } parameterSymbol)
+            return false;
+
+        var receiverSymbol = context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol;
+        if (!SymbolEqualityComparer.Default.Equals(receiverSymbol, parameterSymbol))
+            return false;
+
+        if (context.SemanticModel.GetSymbolInfo(memberAccess, context.CancellationToken).Symbol is not IPropertySymbol resolved)
+            return false;
+
+        property = resolved;
+        return true;
+    }
+
+    /// <summary>
+    /// Returns whether <paramref name="property"/> is a Blazor <c>[Parameter]</c> with an accessible (public)
+    /// setter, so a static <c>AddComponentParameter</c> setter can bind it without a runtime throw.
+    /// </summary>
+    private static bool IsSettableParameter(IPropertySymbol property, ComposableBodyContext context)
+    {
+        var parameterAttribute = context.KnownSymbols.ParameterAttributeType;
+        if (parameterAttribute is null)
+            return false;
+
+        // Blazor resolves [Parameter] with inherit:true semantics (it walks the class hierarchy), so a
+        // property that overrides a base [Parameter] without repeating the attribute is still a valid
+        // parameter at runtime. Roslyn's GetAttributes() only sees directly-declared attributes, so walk
+        // the override chain to match Blazor. `new`-shadowing has no OverriddenProperty, so a shadow
+        // without its own [Parameter] correctly stops the walk and is rejected. Explicit interface
+        // implementations never appear in this chain, which matches Blazor ignoring interface [Parameter]s.
+        var hasParameterAttribute = false;
+        for (var current = property; current is not null && !hasParameterAttribute; current = current.OverriddenProperty)
+        {
+            foreach (var attribute in current.GetAttributes())
+            {
+                if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, parameterAttribute))
+                {
+                    hasParameterAttribute = true;
+                    break;
+                }
+            }
+        }
+
+        return hasParameterAttribute && property.SetMethod is { DeclaredAccessibility: Accessibility.Public };
     }
 }

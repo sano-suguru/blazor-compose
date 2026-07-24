@@ -35,11 +35,38 @@ internal sealed class KnownSymbols
     /// <summary>Resolved symbol for <c>BlazorCompose.ComposableAttribute</c>, or <see langword="null"/> if unavailable.</summary>
     public INamedTypeSymbol? ComposableAttributeType { get; }
 
-    private KnownSymbols(INamedTypeSymbol uiType)
+    /// <summary>Resolved symbol for <c>BlazorCompose.UI.Component&lt;T&gt;()</c>, or null.</summary>
+    public IMethodSymbol? ComponentMethod { get; }
+
+    /// <summary>Resolved unbound generic <c>BlazorCompose.ComponentView&lt;T&gt;</c>, or null.</summary>
+    public INamedTypeSymbol? ComponentViewType { get; }
+
+    /// <summary>Resolved symbol for <c>ComponentView&lt;T&gt;.Param&lt;TValue&gt;(...)</c>, or null.</summary>
+    public IMethodSymbol? ParamMethod { get; }
+
+    /// <summary>Resolved <c>Microsoft.AspNetCore.Components.ParameterAttribute</c>, or null.</summary>
+    public INamedTypeSymbol? ParameterAttributeType { get; }
+
+    private KnownSymbols(INamedTypeSymbol uiType, Compilation compilation)
     {
         ViewType = uiType.ContainingAssembly.GetTypeByMetadataName("BlazorCompose.View");
         ComposableAttributeType =
             uiType.ContainingAssembly.GetTypeByMetadataName("BlazorCompose.ComposableAttribute");
+        ComponentViewType = uiType.ContainingAssembly.GetTypeByMetadataName("BlazorCompose.ComponentView`1");
+        ParameterAttributeType =
+            compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Components.ParameterAttribute");
+
+        if (ComponentViewType is not null)
+        {
+            foreach (var member in ComponentViewType.GetMembers("Param"))
+            {
+                if (member is IMethodSymbol { Arity: 1, Parameters.Length: 2 } paramMethod)
+                {
+                    ParamMethod = paramMethod;
+                    break;
+                }
+            }
+        }
 
         foreach (var member in uiType.GetMembers())
         {
@@ -63,6 +90,9 @@ internal sealed class KnownSymbols
                 case "ForEach" when method.Parameters.Length == 3 && method.Arity == 1:
                     ForEachMethod = method;
                     break;
+                case "Component" when method.Arity == 1 && method.Parameters.Length == 0:
+                    ComponentMethod = method;
+                    break;
             }
         }
     }
@@ -74,7 +104,7 @@ internal sealed class KnownSymbols
     public static KnownSymbols? TryCreate(Compilation compilation)
     {
         var uiType = compilation.GetTypeByMetadataName("BlazorCompose.UI");
-        return uiType is not null ? new KnownSymbols(uiType) : null;
+        return uiType is not null ? new KnownSymbols(uiType, compilation) : null;
     }
 
 }

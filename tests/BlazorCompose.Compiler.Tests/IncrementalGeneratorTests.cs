@@ -642,6 +642,49 @@ public sealed class IncrementalGeneratorTests
             $"Expected diagnostic-only result Cached/Unchanged but got {cyclic.Reason}");
     }
 
+    /// <summary>
+    /// Proves that the <c>Component&lt;T&gt;()</c> interop model (<see cref="ComponentNode"/>,
+    /// <see cref="ComponentTemplateNode"/>, and their <c>EquatableArray&lt;ComponentParameter&gt;</c>
+    /// parameter lists) is value-equal across identical reruns, so the host's
+    /// <c>ComponentModeling</c> output is cached rather than recomputed as a distinct-but-equal value.
+    /// </summary>
+    [Fact]
+    public void IncrementalGenerator_OnIdenticalRerun_CachesComponentInteropModel()
+    {
+        const string childSource = """
+            using Microsoft.AspNetCore.Components;
+            namespace TestNs;
+            public class Child : ComponentBase { [Parameter] public string Label { get; set; } = ""; }
+            """;
+        const string hostSource = """
+            using BlazorCompose;
+            using static BlazorCompose.UI;
+            namespace TestNs;
+            public partial class Host : ComposeComponentBase
+            {
+                protected override View Body => Component<Child>().Param(c => c.Label, "hi");
+            }
+            """;
+
+        var compilation = CreateCompilation(
+            ParseTree(childSource, "Child.cs"),
+            ParseTree(hostSource, "Host.cs"));
+        GeneratorDriver driver = CreateDriver();
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+        var run2 = driver.GetRunResult();
+
+        var outputs = run2.Results[0].TrackedSteps["ComponentModeling"]
+            .SelectMany(s => s.Outputs).ToImmutableArray();
+        var host = outputs.Single(o =>
+            o.Value is ComponentModelResult result && result.Model is { } model && model.ClassName == "Host");
+
+        Assert.True(
+            host.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged,
+            $"Expected Component<T> host model reuse but got {host.Reason}");
+    }
+
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------

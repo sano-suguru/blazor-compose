@@ -26,6 +26,14 @@ public sealed class KeyabilityResolverTests
     }
 
     [Fact]
+    public void ResolveRootKind_Component_IsElement()
+    {
+        var node = new ComponentTemplateNode("global::X.C", EquatableArray<ComponentParameter>.Empty);
+
+        Assert.Equal(ContentRootKind.Element, KeyabilityResolver.ResolveRootKind(node, ComposableRegistry.Empty));
+    }
+
+    [Fact]
     public void ResolveRootKind_ComposableCallToUnknown_IsUnresolved()
     {
         var node = new ComposableCallTemplateNode(
