@@ -5,6 +5,11 @@ docs/superpowers/
 bin/
 obj/
 
+# Local agent/tooling instructions (kept on disk, not published)
+AGENTS.md
+CLAUDE.md
+.github/copilot-instructions.md
+
 # Build/pack output (dotnet pack -o artifacts/…, PackageContentsTests)
 artifacts/
 *.nupkg
